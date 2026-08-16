@@ -1,22 +1,33 @@
 /* Throughline.
  *
  * Two rules shape this file. The front door contains no decisions: the
- * app opens on the last project worked in and names one next action.
- * And nothing here ever counts undone work - the rail shows what is
- * alive, never what is owed.
+ * app opens on the project last worked in and names one action. And
+ * nothing here ever counts undone work - the map shows what is alive,
+ * never what is owed.
  */
 
 const PHASES = ["problem", "analysis", "design", "code"];
-const STATE_WORDS = {
-  empty: "not started",
-  drafted: "drafted, not read yet",
-  in_progress: "partway through",
-  current: "written",
+const COLUMN_X = [8, 32, 58, 82];
+const NODE_HALF_X = 8.8;
+const NODE_HALF_Y = 6;
+
+const LEAD = {
+  empty: "Start →",
+  drafted: "Read →",
+  in_progress: "Continue →",
 };
 
-let current = null;
-
 const el = (id) => document.getElementById(id);
+const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "failure"];
+
+let project = null;
+let projects = [];
+let openTask = null;
+let openNode = null;
+let loadedVersion = null;
+let theirText = null;
+let history = [];
+let future = [];
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -25,9 +36,13 @@ async function api(path, options) {
 }
 
 function esc(text) {
-  return text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return String(text).replace(/[&<>]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])
+  );
 }
 
+/* Markdown, for exactly the subset these artifacts use. A full parser
+ * would be a megabyte of dependency for tables, headings and fences. */
 function inline(text) {
   return esc(text)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -35,13 +50,10 @@ function inline(text) {
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
 }
 
-function row(line) {
+function cells(line) {
   return line.split("|").slice(1, -1).map((c) => c.trim());
 }
 
-/* A markdown renderer for exactly the subset these artifacts use.
- * Vendoring a full parser would be a megabyte of dependency for tables,
- * headings and fences. */
 function render(md) {
   const lines = md.split("\n");
   const out = [];
@@ -56,21 +68,20 @@ function render(md) {
       i += 1;
       while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
       i += 1;
-      if (lang === "mermaid") {
-        /* mermaid reads textContent, so the escaping here is undone
-         * before it ever sees the source. */
-        out.push(`<pre class="mermaid">${esc(buf.join("\n"))}</pre>`);
-      } else {
-        out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`);
-      }
+      const body = esc(buf.join("\n"));
+      out.push(
+        lang === "mermaid"
+          ? `<pre class="mermaid">${body}</pre>`
+          : `<pre><code>${body}</code></pre>`
+      );
       continue;
     }
 
     if (/^\|.*\|$/.test(line) && /^\|[\s:|-]+\|$/.test(lines[i + 1] || "")) {
-      const head = row(line);
+      const head = cells(line);
       i += 2;
       const body = [];
-      while (i < lines.length && /^\|.*\|$/.test(lines[i])) body.push(row(lines[i++]));
+      while (i < lines.length && /^\|.*\|$/.test(lines[i])) body.push(cells(lines[i++]));
       const th = head.map((c) => `<th>${inline(c)}</th>`).join("");
       const tr = body
         .map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`)
@@ -128,9 +139,8 @@ function render(md) {
   return out.join("\n");
 }
 
-/* Mermaid is 3.5MB, vendored so the app works offline and under Tauri's
- * CSP. It is fetched the first time a diagram is actually on screen and
- * never on startup, so the front door stays instant. */
+/* Mermaid is 3.5MB, vendored so the app works offline. It is fetched the
+ * first time a diagram is on screen and never at startup. */
 let mermaidLoading = null;
 
 function loadMermaid() {
@@ -142,7 +152,7 @@ function loadMermaid() {
       const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       window.mermaid.initialize({
         startOnLoad: false,
-        theme: dark ? "dark" : "default",
+        theme: dark ? "dark" : "neutral",
         securityLevel: "strict",
       });
       resolve(window.mermaid);
@@ -153,8 +163,6 @@ function loadMermaid() {
   return mermaidLoading;
 }
 
-/* A diagram that will not parse leaves its source on screen. That is the
- * honest fallback: the text is still the artifact. */
 async function drawDiagrams(root) {
   const blocks = [...root.querySelectorAll("pre.mermaid")];
   if (!blocks.length) return;
@@ -167,278 +175,312 @@ async function drawDiagrams(root) {
 }
 
 function setRendered(markdown) {
+  // The editor needs the source, and reading it back out of rendered
+  // HTML would be lossy. Keep it beside the textarea instead.
+  el("source").dataset.text = markdown;
   const target = el("rendered");
   target.innerHTML = render(markdown);
   drawDiagrams(target);
 }
 
-function drawRail(projects) {
-  const rail = el("projects");
-  rail.innerHTML = "";
-  projects.forEach((p) => {
-    const button = document.createElement("button");
-    button.className = "project" + (p.missing ? " missing" : "");
-    button.setAttribute("aria-current", current && p.path === current.path);
-    const bar = p.phases
-      .map((ph) => "#".repeat(ph.filled) + ".".repeat(ph.total - ph.filled))
-      .join(" ");
-    button.innerHTML = `${esc(p.project || p.name)}<span class="bar">${
-      p.missing ? "folder not found" : esc(bar)
-    }</span>`;
-    button.onclick = () => open(p.path);
-    rail.appendChild(button);
+/* Navigation ------------------------------------------------------ */
+
+function snapshot() {
+  return { screen: current(), node: openNode, task: openTask, path: project && project.path };
+}
+
+function current() {
+  return SCREENS.find((name) => !el(name).hidden) || "front";
+}
+
+function show(screen) {
+  SCREENS.forEach((name) => {
+    el(name).hidden = name !== screen;
   });
+  el("go-front").classList.toggle("on", screen === "front");
+  el("go-map").classList.toggle("on", screen === "map");
+  el("go-tasks").classList.toggle("on", screen === "tasks");
+  el("go-setup").classList.toggle("on", screen === "setup");
+  el("switcher").hidden = true;
 }
 
-/* A task-only repo has no node graph. Saying so beats an empty panel,
- * which reads as breakage. */
-async function drawSetup(graph) {
-  const data = await api(`/api/setup?repo=${encodeURIComponent(current.path)}`);
-  const box = document.createElement("div");
-  box.className = "setup";
-  box.innerHTML = data
-    ? render(data.text)
-    : "<p>Tracked for task work only. No setup written yet — " +
-      "ask Claude to set this repo up when it earns it.</p>";
-  graph.appendChild(box);
-}
-
-function drawGraph(nodes) {
-  const graph = el("graph");
-  graph.innerHTML = "";
-  if (current.task_only) {
-    drawSetup(graph);
-    return;
+function goTo(screen, record = true) {
+  if (record) {
+    history.push(snapshot());
+    future = [];
   }
-  PHASES.forEach((phase) => {
-    const inPhase = nodes.filter((n) => n.phase === phase);
-    if (!inPhase.length) return;
-    const column = document.createElement("div");
-    column.innerHTML = `<div class="phase-title">${phase}</div>`;
-    inPhase.forEach((node) => {
-      const button = document.createElement("button");
-      button.className =
-        "node " + node.status + (node.id === current.next ? " next" : "");
-      button.innerHTML = `${esc(node.title)}<span class="state">${
-        STATE_WORDS[node.status] || node.status
-      }</span>`;
-      button.onclick = () => showArtifact(node);
-      column.appendChild(button);
-    });
-    graph.appendChild(column);
-  });
+  show(screen);
+  updateChevrons();
 }
 
-/* The task list is opened deliberately or not at all. Nothing renders it
- * on load, and no count of it appears anywhere. */
-let openTask = null;
+function updateChevrons() {
+  el("back").classList.toggle("on", history.length > 0);
+  el("forward").classList.toggle("on", future.length > 0);
+}
 
-const TASK_WORDS = {
-  open: "not started",
-  in_progress: "in progress",
-  done: "finished",
-  abandoned: "dropped",
+async function restore(state) {
+  if (state.path && (!project || project.path !== state.path)) await openProject(state.path, false);
+  if (state.screen === "reading" && state.node) {
+    await showArtifact(state.node, state.task, false);
+  } else {
+    if (state.screen === "map") drawMap();
+    if (state.screen === "tasks") await drawTasks();
+    if (state.screen === "setup") await drawSetup();
+    show(state.screen);
+  }
+  updateChevrons();
+}
+
+el("back").onclick = async () => {
+  if (!history.length) return;
+  const here = snapshot();
+  const previous = history.pop();
+  future.unshift(here);
+  await restore(previous);
 };
 
-async function showTasks() {
-  const list = await api(`/api/tasks?repo=${encodeURIComponent(current.path)}`);
-  const target = el("tasks");
-  target.innerHTML = "";
-  if (!list || !list.length) {
-    target.innerHTML = "<p>No tasks in this project yet.</p>";
-  }
-  (list || []).forEach((task) => {
-    const box = document.createElement("div");
-    box.className = "task " + task.status;
-    box.innerHTML =
-      `<div class="task-title">${esc(task.title)}` +
-      `<span class="state">${TASK_WORDS[task.status] || task.status}` +
-      `${task.reference ? " · " + esc(task.reference) : ""}</span></div>`;
-    task.nodes.forEach((node) => {
-      const button = document.createElement("button");
-      button.className =
-        "node " + node.status + (node.id === task.next ? " next" : "");
-      button.innerHTML = `${esc(node.title)}<span class="state">${
-        STATE_WORDS[node.status] || node.status
-      }</span>`;
-      button.onclick = () => showArtifact(node, task.slug);
-      box.appendChild(button);
-    });
-    target.appendChild(box);
+el("forward").onclick = async () => {
+  if (!future.length) return;
+  const here = snapshot();
+  const next = future.shift();
+  history.push(here);
+  await restore(next);
+};
+
+/* The rail and the switcher --------------------------------------- */
+
+el("switch").onclick = () => {
+  const box = el("switcher");
+  box.hidden = !box.hidden;
+  if (!box.hidden) drawSwitcher();
+};
+
+function drawSwitcher() {
+  const box = el("switcher");
+  box.innerHTML = "";
+  projects.forEach((entry) => {
+    const row = document.createElement("button");
+    row.className = "sw-row";
+    const tag = entry.missing ? "missing" : entry.task_only ? "task-only" : "";
+    row.innerHTML = `<span>${esc(entry.project || entry.name)}</span><span class="tag">${tag}</span>`;
+    row.onclick = () => openProject(entry.path);
+    box.appendChild(row);
   });
-  el("graph").hidden = true;
-  el("artifact").hidden = true;
-  target.hidden = false;
 }
 
-/* Gaps appear on the artifact that states them, never on a screen of
- * their own, and each one is promoted by its own deliberate click. A
- * screen listing every gap in the project is a backlog. */
-async function drawGaps(nodeId) {
-  const target = el("gaps");
-  target.innerHTML = "";
-  target.hidden = true;
+el("go-front").onclick = () => goTo("front");
+el("go-map").onclick = () => { drawMap(); goTo("map"); };
+el("go-tasks").onclick = async () => { await drawTasks(); goTo("tasks"); };
+el("go-setup").onclick = async () => { await drawSetup(); goTo("setup"); };
+
+/* The front door -------------------------------------------------- */
+
+function drawFront() {
+  el("front-project").textContent = project.project || project.name;
+  el("front-reminder").textContent = project.note || "";
+
+  const action = el("front-action");
+  const sub = el("front-sub");
+
+  if (project.next) {
+    const verb = project.task ? "Continue" : "Next";
+    action.hidden = false;
+    action.textContent = `${verb}: ${project.next_title}`;
+    sub.textContent = `→ opens Claude in ${project.name}/`;
+  } else {
+    action.hidden = true;
+    sub.textContent = project.task_only
+      ? "No task in flight. Start one when a ticket arrives."
+      : "Nothing waiting — every document is written.";
+  }
+}
+
+el("front-action").onclick = (event) => startNode(project.next, event.currentTarget, project.task);
+
+/* The map --------------------------------------------------------- */
+
+function layout(nodes) {
+  const placed = {};
+  PHASES.forEach((phase, column) => {
+    const inPhase = nodes.filter((n) => n.phase === phase);
+    if (!inPhase.length) return;
+    const spacing = Math.min(18, 84 / inPhase.length);
+    const start = Math.max(4, (100 - (inPhase.length - 1) * spacing - 12) / 2);
+    inPhase.forEach((node, index) => {
+      placed[node.id] = { x: COLUMN_X[column], y: start + index * spacing };
+    });
+  });
+  return placed;
+}
+
+function drawMap() {
+  el("map-lede").textContent =
+    `${project.project || project.name} — how the documents depend on each other.`;
+
+  el("phases").innerHTML = PHASES.map((p) => `<span>${p}</span>`).join("");
+
+  const nodes = project.nodes || [];
+  const placed = layout(nodes);
+  const svg = el("edges");
+  const box = el("map-nodes");
+  svg.innerHTML = "";
+  box.innerHTML = "";
+
+  nodes.forEach((node) => {
+    (node.deps || []).forEach((dep) => {
+      if (!placed[dep] || !placed[node.id]) return;
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", placed[dep].x + NODE_HALF_X);
+      line.setAttribute("y1", placed[dep].y + NODE_HALF_Y);
+      line.setAttribute("x2", placed[node.id].x + NODE_HALF_X);
+      line.setAttribute("y2", placed[node.id].y + NODE_HALF_Y);
+      line.setAttribute("stroke", "var(--divider)");
+      line.setAttribute("stroke-width", "0.3");
+      svg.appendChild(line);
+    });
+  });
+
+  nodes.forEach((node) => {
+    const spot = placed[node.id];
+    const button = document.createElement("button");
+    button.className = `mnode ${node.status}`;
+    button.style.left = `${spot.x}%`;
+    button.style.top = `${spot.y}%`;
+    const lead = LEAD[node.status];
+    button.innerHTML =
+      `<span>${esc(node.title)}</span>` + (lead ? `<span class="lead">${lead}</span>` : "");
+    button.onclick = () => showArtifact(node.id);
+    box.appendChild(button);
+  });
+}
+
+/* Documents ------------------------------------------------------- */
+
+function nodeById(id) {
+  return (project.nodes || []).find((n) => n.id === id);
+}
+
+async function showArtifact(nodeId, slug = null, record = true) {
+  openNode = nodeId;
+  openTask = slug;
+  clearConflict();
+
+  const query = new URLSearchParams({ repo: project.path, node: nodeId });
+  if (slug) query.set("slug", slug);
+  const data = await api(`/api/artifact?${query}`);
+  loadedVersion = data ? data.version : null;
+
+  const node = slug ? { title: titleOf(nodeId), phase: "task", status: data ? "current" : "empty" } : nodeById(nodeId);
+  const title = node ? node.title : nodeId;
+
+  el("doc-kicker").textContent = slug ? `Task · ${title}` : `${node.phase} · ${title}`;
+  el("doc-title").textContent = title;
+
+  const status = node ? node.status : "empty";
+  const unwritten = !data;
+  el("doc-empty").hidden = !unwritten;
+  el("rendered").hidden = unwritten;
+  el("edit").hidden = unwritten;
+
+  if (unwritten) {
+    const mid = status === "in_progress";
+    el("doc-empty-text").textContent = mid ? "Mid-interview." : "Not started yet.";
+    el("doc-start").textContent = mid ? "Continue — hands to Claude" : "Start — hands to Claude";
+    el("gaps").hidden = true;
+    el("drafted-note").hidden = true;
+    el("stale-note").hidden = true;
+  } else {
+    setRendered(data.text);
+    el("drafted-note").hidden = status !== "drafted";
+    await drawStale(nodeId, slug);
+    await drawGaps(nodeId, slug);
+  }
+
+  if (record) goTo("reading");
+  else show("reading");
+}
+
+function titleOf(nodeId) {
+  const words = { understand: "Understand", analyze: "Analyze", design: "Design", verify: "Verify" };
+  return words[nodeId] || nodeId;
+}
+
+/* Rule 5: staleness is asked for one document at a time, never
+ * broadcast, and one word dismisses it. */
+async function drawStale(nodeId, slug) {
+  const note = el("stale-note");
+  note.hidden = true;
+  if (slug) return;
   const found = await api(
-    `/api/gaps?repo=${encodeURIComponent(current.path)}&node=${nodeId}`
+    `/api/stale?repo=${encodeURIComponent(project.path)}&node=${nodeId}`
+  );
+  if (!found || !found.stale) return;
+  const names = found.changed.map((id) => {
+    const node = nodeById(id);
+    return node ? node.title : id;
+  });
+  el("stale-text").textContent =
+    `${names.join(" and ")} changed since this was written.`;
+  note.hidden = false;
+}
+
+el("dismiss-stale").onclick = () => { el("stale-note").hidden = true; };
+
+async function drawGaps(nodeId, slug) {
+  const box = el("gaps");
+  const rows = el("gap-rows");
+  rows.innerHTML = "";
+  box.hidden = true;
+  if (slug) return;
+
+  const found = await api(
+    `/api/gaps?repo=${encodeURIComponent(project.path)}&node=${nodeId}`
   );
   if (!found || !found.length) return;
-
-  const heading = document.createElement("h2");
-  heading.textContent = "What this says should change";
-  target.appendChild(heading);
 
   found.forEach((gap) => {
     const row = document.createElement("div");
     row.className = "gap";
-    const label = document.createElement("span");
-    label.textContent = gap.title || "the target side";
+
+    const what = document.createElement("div");
+    what.className = "what";
+    const first = (gap.text || "").split("\n").find((line) => line.trim());
+    what.innerHTML =
+      `<div>${esc(gap.title || "the target side")}</div>` +
+      (first ? `<div><span class="lbl">Should be:</span> ${esc(first)}</div>` : "");
+
     const button = document.createElement("button");
-    button.textContent = "Make this a task";
+    button.textContent = "→ Task";
     button.onclick = async () => {
       button.disabled = true;
       button.textContent = "Creating…";
       const query = new URLSearchParams({
-        repo: current.path,
+        repo: project.path,
         node: gap.node,
         title: gap.title,
       });
       const response = await fetch(`/api/promote?${query}`, { method: "POST" });
-      button.textContent = response.ok ? "Task created" : "Could not create it";
-      if (response.ok) await open(current.path);
+      button.textContent = response.ok ? "Added to tasks" : "Could not create it";
+      if (response.ok) await refresh();
     };
-    row.append(label, button);
-    target.appendChild(row);
+
+    row.append(what, button);
+    rows.appendChild(row);
   });
-  target.hidden = false;
+  box.hidden = false;
 }
 
-async function showArtifact(node, slug = null) {
-  openTask = slug;
-  const query = new URLSearchParams({ repo: current.path, node: node.id });
-  if (slug) query.set("slug", slug);
-  const url = `/api/artifact?${query}`;
-  const data = await api(url);
-  loadedVersion = data ? data.version : null;
-  clearConflict();
-  el("tasks").hidden = true;
-  el("graph").hidden = true;
-  el("artifact").hidden = false;
-  el("source").value = data ? data.text : "";
-  if (data) {
-    setRendered(data.text);
-  } else {
-    el("rendered").innerHTML =
-      `<p>Nothing written for <strong>${esc(node.title)}</strong> yet.</p>`;
-  }
-  el("artifact").dataset.node = node.id;
-  setEditing(false);
-  if (slug) {
-    el("gaps").hidden = true;
-  } else {
-    drawGaps(node.id);
-  }
-}
+el("doc-start").onclick = (event) => startNode(openNode, event.currentTarget, openTask);
+el("edit").onclick = () => {
+  el("edit-title").textContent = el("doc-title").textContent;
+  el("source").value = el("source").dataset.text || "";
+  goTo("editing");
+};
 
-function setEditing(on) {
-  el("source").hidden = !on;
-  el("rendered").hidden = on;
-  if (on) el("gaps").hidden = true;
-  el("edit").hidden = on;
-  el("work").hidden = on;
-  el("save").hidden = !on;
-  el("cancel").hidden = !on;
-}
-
-function showGraph() {
-  el("artifact").hidden = true;
-  el("tasks").hidden = true;
-  el("graph").hidden = false;
-  openTask = null;
-}
-
-async function open(path) {
-  const data = await api(`/api/project?repo=${encodeURIComponent(path)}`);
-  if (!data) return;
-  current = data;
-  el("project-name").textContent = data.project || data.name;
-  el("note").textContent = data.note || "";
-
-  /* A live task owns the next action. You finish what you started. */
-  const onTask = el("on-task");
-  onTask.hidden = !data.task;
-  onTask.textContent = data.task ? `On: ${data.task_title}` : "";
-
-  const next = el("next-action");
-  if (data.next) {
-    next.hidden = false;
-    next.textContent = `Next: ${data.next_title}`;
-  } else {
-    next.hidden = true;
-  }
-  drawGraph(data.nodes);
-  showGraph();
-  drawRail(await api("/api/projects"));
-}
-
-async function start() {
-  const home = await api("/api/home");
-  const projects = (await api("/api/projects")) || [];
-  if (!home || !home.path) {
-    el("empty").hidden = false;
-    el("head").hidden = true;
-    drawRail(projects);
-    return;
-  }
-  await open(home.path);
-}
-
-/* The handoff. The sidecar spawns the session because a browser tab
- * cannot; under Tauri the same endpoint does the same thing. */
-async function startNode(nodeId, button, slug = null) {
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = "Opening Claude…";
-  const query = new URLSearchParams({ repo: current.path, node: nodeId });
-  if (slug) query.set("slug", slug);
-  const response = await fetch(`/api/start?${query}`, { method: "POST" });
-  if (response.ok) {
-    button.textContent = "Opened in Claude";
-  } else {
-    const problem = await response.json().catch(() => ({}));
-    button.textContent = problem.error || "Could not open Claude";
-  }
-  setTimeout(() => {
-    button.disabled = false;
-    button.textContent = label;
-  }, 4000);
-}
-
-el("back").onclick = showGraph;
-el("edit").onclick = () => setEditing(true);
-el("cancel").onclick = () => setEditing(false);
-
-el("next-action").onclick = (event) =>
-  startNode(current.next, event.currentTarget, current.task);
-
-el("work").onclick = (event) =>
-  startNode(el("artifact").dataset.node, event.currentTarget, openTask);
-
-el("tasks-toggle").onclick = () =>
-  el("tasks").hidden ? showTasks() : showGraph();
-
-/* Two writers, and neither silently wins.
- *
- * The version is whatever the file looked like when it was loaded. If it
- * has moved on, the save is refused and nothing typed is thrown away -
- * the choice is put to the person who typed it. */
-let loadedVersion = null;
-let theirText = null;
+/* Editing, and two writers ---------------------------------------- */
 
 function showConflict(text) {
   theirText = text;
-  el("conflict-text").textContent =
-    "This changed while you were editing — a Claude session, or another " +
-    "window, wrote it. Nothing you typed has been lost.";
   el("conflict").hidden = false;
 }
 
@@ -447,11 +489,10 @@ function clearConflict() {
   theirText = null;
 }
 
-async function saveArtifact(version) {
-  const node = el("artifact").dataset.node;
-  const query = new URLSearchParams({ repo: current.path, node });
+async function saveArtifact() {
+  const query = new URLSearchParams({ repo: project.path, node: openNode });
   if (openTask) query.set("slug", openTask);
-  if (version) query.set("version", version);
+  if (loadedVersion) query.set("version", loadedVersion);
 
   const response = await fetch(`/api/artifact?${query}`, {
     method: "PUT",
@@ -471,26 +512,149 @@ async function saveArtifact(version) {
   return true;
 }
 
+el("save").onclick = async () => {
+  if (await saveArtifact()) await showArtifact(openNode, openTask);
+};
+
+el("cancel").onclick = () => showArtifact(openNode, openTask);
+
 el("keep-mine").onclick = async () => {
-  // Their version is now the one on disk, so saving against it replaces
-  // their text with this one - deliberately, and only on this click.
-  if (await saveArtifact(loadedVersion)) {
-    setRendered(el("source").value);
-    setEditing(false);
-  }
+  if (await saveArtifact()) await showArtifact(openNode, openTask);
 };
 
 el("take-theirs").onclick = () => {
   el("source").value = theirText || "";
-  setRendered(el("source").value);
   clearConflict();
 };
 
-el("save").onclick = async () => {
-  if (await saveArtifact(loadedVersion)) {
-    setRendered(el("source").value);
-    setEditing(false);
+/* Tasks ----------------------------------------------------------- */
+
+async function drawTasks() {
+  el("tasks-lede").textContent = project.project || project.name;
+  const rows = el("task-rows");
+  rows.innerHTML = "";
+
+  const list = await api(`/api/tasks?repo=${encodeURIComponent(project.path)}`);
+  if (!list || !list.length) {
+    rows.innerHTML = '<p class="muted">No tasks in this project yet.</p>';
+    return;
   }
-};
+
+  list.forEach((task) => {
+    const row = document.createElement("button");
+    row.className = `task ${task.status}`;
+
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = task.title;
+
+    const steps = document.createElement("div");
+    steps.className = "steps";
+    task.nodes.forEach((node, index) => {
+      const dot = document.createElement("span");
+      const done = node.status === "current";
+      const here = task.status !== "abandoned" && node.id === task.next;
+      dot.className = `dot${done ? " filled" : here ? " current" : ""}`;
+      dot.title = node.title;
+      steps.appendChild(dot);
+      if (index < task.nodes.length - 1) {
+        const link = document.createElement("span");
+        link.className = "link";
+        steps.appendChild(link);
+      }
+    });
+
+    row.append(name, steps);
+    row.onclick = () => showArtifact(task.next || task.nodes[0].id, task.slug);
+    rows.appendChild(row);
+  });
+}
+
+/* Setup, for a repo tracked only for task work -------------------- */
+
+async function drawSetup() {
+  el("setup-title").textContent = project.project || project.name;
+  const data = await api(`/api/setup?repo=${encodeURIComponent(project.path)}`);
+  el("setup-body").innerHTML = data
+    ? render(data.text)
+    : '<p class="muted">No setup written yet — ask Claude to set this repo up when it earns it.</p>';
+}
+
+/* Handing off ----------------------------------------------------- */
+
+async function startNode(nodeId, button, slug = null) {
+  if (!nodeId) return;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Opening Claude…";
+
+  const query = new URLSearchParams({ repo: project.path, node: nodeId });
+  if (slug) query.set("slug", slug);
+  const response = await fetch(`/api/start?${query}`, { method: "POST" });
+
+  if (response.ok) {
+    button.textContent = "Opened in Claude";
+  } else {
+    const problem = await response.json().catch(() => ({}));
+    button.textContent = problem.error || "Could not open Claude";
+  }
+  setTimeout(() => {
+    button.disabled = false;
+    button.textContent = label;
+  }, 4000);
+}
+
+/* Loading a project ----------------------------------------------- */
+
+async function openProject(path, record = true) {
+  const data = await api(`/api/project?repo=${encodeURIComponent(path)}`);
+  if (!data) return;
+  project = data;
+  el("tb-project").textContent = `— ${data.project || data.name}`;
+  el("go-map").hidden = !!data.task_only;
+  el("go-setup").hidden = !data.task_only;
+  drawFront();
+  if (record) goTo("front");
+  else show("front");
+}
+
+async function refresh() {
+  if (!project) return;
+  await openProject(project.path, false);
+  projects = (await api("/api/projects")) || [];
+}
+
+function fail(reason) {
+  el("failure-text").textContent = reason;
+  el("failure-list").innerHTML = [
+    "Another Throughline window may already be running.",
+    "The <code>throughline</code> command needs to be on your PATH.",
+    "Run <code>throughline status</code> in a terminal to check.",
+  ]
+    .map((line) => `<li>${line}</li>`)
+    .join("");
+  show("failure");
+}
+
+el("retry").onclick = () => start();
+
+async function start() {
+  try {
+    const home = await api("/api/home");
+    projects = (await api("/api/projects")) || [];
+    if (!home || !home.path) {
+      el("front-project").textContent = "No projects yet";
+      el("front-reminder").textContent =
+        "Run throughline init in a repository, then throughline add to track it.";
+      el("front-action").hidden = true;
+      el("front-sub").textContent = "";
+      show("front");
+      return;
+    }
+    await openProject(home.path, false);
+  } catch (problem) {
+    fail("The background process that reads your files didn't respond. Nothing you've written was touched.");
+  }
+}
 
 start();

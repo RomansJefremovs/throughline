@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import gaps, registry, setup, tasks
+from . import gaps, hashing, registry, setup, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -148,6 +148,23 @@ def _get_setup(query: dict) -> Response:
     if not path.is_file():
         return _error(404, "no setup written for this repo")
     return _json_response({"text": path.read_text(encoding="utf-8")})
+
+
+def _get_stale(query: dict) -> Response:
+    """Whether one document's inputs have moved since it was written.
+
+    Its own endpoint, asked for one node at a time, because rule 5 says
+    staleness is surfaced when someone opens the thing and never
+    broadcast. No other response carries it.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node = query.get("node")
+    if not node:
+        return _error(400, "node is required")
+    changed = hashing.stale_deps(repo, node, state_module.load(repo))
+    return _json_response({"node": node, "stale": bool(changed), "changed": changed})
 
 
 def _get_gaps(query: dict) -> Response:
@@ -329,6 +346,10 @@ ASSET_TYPES = {
     "/app.css": ("app.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/vendor/mermaid.min.js": ("vendor/mermaid.min.js", "text/javascript; charset=utf-8"),
+    "/vendor/archivo.css": ("vendor/archivo.css", "text/css; charset=utf-8"),
+    "/vendor/archivo-400.woff2": ("vendor/archivo-400.woff2", "font/woff2"),
+    "/vendor/archivo-600.woff2": ("vendor/archivo-600.woff2", "font/woff2"),
+    "/vendor/archivo-800.woff2": ("vendor/archivo-800.woff2", "font/woff2"),
 }
 
 
@@ -344,6 +365,8 @@ def route(method: str, path: str, query: dict, body: bytes) -> Response:
         return _get_project(query)
     if method == "GET" and path == "/api/setup":
         return _get_setup(query)
+    if method == "GET" and path == "/api/stale":
+        return _get_stale(query)
     if method == "GET" and path == "/api/gaps":
         return _get_gaps(query)
     if method == "GET" and path == "/api/tasks":

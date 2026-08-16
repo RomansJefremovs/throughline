@@ -4,47 +4,138 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Throughline</title>
+<link rel="stylesheet" href="/vendor/archivo.css">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<aside id="rail">
-  <div class="rail-head">Projects</div>
-  <nav id="projects"></nav>
-</aside>
 
-<main id="main">
-  <header id="head">
-    <h1 id="project-name">Throughline</h1>
-    <p id="note"></p>
-    <p id="on-task" hidden></p>
-    <button id="next-action" hidden></button>
-    <button id="tasks-toggle">Tasks</button>
-  </header>
+<header id="titlebar">
+  <div class="tb-left">
+    <span class="tb-mark"></span>
+    <nav class="tb-nav">
+      <button id="back" class="chevron back" title="Back" aria-label="Back"></button>
+      <button id="forward" class="chevron fwd" title="Forward" aria-label="Forward"></button>
+    </nav>
+    <span class="tb-name">Throughline</span>
+    <span class="tb-project" id="tb-project"></span>
+  </div>
+</header>
 
-  <section id="graph"></section>
+<div id="body">
 
-  <section id="tasks" hidden></section>
+  <nav id="rail">
+    <button id="switch" class="rail-btn boxed" title="Switch project" aria-label="Switch project">
+      <span class="glyph-grid"><i></i><i></i><i></i><i></i></span>
+    </button>
+    <div id="switcher" hidden></div>
 
-  <section id="artifact" hidden>
-    <div class="artifact-head">
-      <button id="back">Back to the map</button>
-      <button id="work">Work on this in Claude</button>
-      <button id="edit">Edit</button>
-      <button id="save" hidden>Save</button>
-      <button id="cancel" hidden>Cancel</button>
+    <span class="rail-rule"></span>
+
+    <button id="go-front" class="rail-btn" title="Front door" aria-label="Front door">
+      <span class="glyph-solid"></span>
+    </button>
+    <button id="go-map" class="rail-btn" title="The map" aria-label="The map">
+      <span class="glyph-grid outline"><i></i><i></i><i></i><i></i></span>
+    </button>
+    <button id="go-setup" class="rail-btn" title="Setup" aria-label="Setup" hidden>
+      <span class="glyph-dot"></span>
+    </button>
+    <button id="go-tasks" class="rail-btn" title="Tasks" aria-label="Tasks">
+      <span class="glyph-lines"><i></i><i></i><i></i></span>
+    </button>
+  </nav>
+
+  <main id="main">
+
+    <section id="front" class="screen">
+      <p class="kicker" id="front-project"></p>
+      <p class="reminder" id="front-reminder"></p>
+      <button id="front-action" class="hero"></button>
+      <p class="sub" id="front-sub"></p>
+    </section>
+
+    <section id="map" class="screen" hidden>
+      <h2>The map</h2>
+      <p class="lede" id="map-lede"></p>
+      <div id="phases"></div>
+      <div id="canvas">
+        <svg id="edges" preserveAspectRatio="none" viewBox="0 0 100 100"></svg>
+        <div id="map-nodes"></div>
+      </div>
+    </section>
+
+    <section id="setup" class="screen prose" hidden>
+      <p class="kicker">Setup &mdash; task work only</p>
+      <h2 id="setup-title"></h2>
+      <div id="setup-body"></div>
+    </section>
+
+    <section id="reading" class="screen prose" hidden>
+      <div class="doc-head">
+        <p class="kicker" id="doc-kicker"></p>
+        <button id="edit" class="linkish">Edit</button>
+      </div>
+      <h2 id="doc-title"></h2>
+
+      <div id="drafted-note" class="note tint" hidden>Drafted by Claude &mdash; not yet read.</div>
+      <div id="stale-note" class="note edge" hidden>
+        <span id="stale-text"></span>
+        <button id="dismiss-stale" class="linkish">OK</button>
+      </div>
+
+      <div id="doc-empty" class="stage" hidden>
+        <p class="muted" id="doc-empty-text">Not started yet.</p>
+        <button id="doc-start" class="solid"></button>
+      </div>
+
+      <article id="rendered"></article>
+
+      <section id="gaps" hidden>
+        <h4 class="kicker ruled">Where this differs</h4>
+        <div id="gap-rows"></div>
+      </section>
+    </section>
+
+    <section id="editing" class="screen" hidden>
+      <p class="kicker">Editing &mdash; raw markdown</p>
+      <h2 id="edit-title"></h2>
+      <textarea id="source" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="save" class="solid">Save</button>
+        <button id="cancel" class="hollow">Cancel</button>
+      </div>
+    </section>
+
+    <section id="tasks" class="screen" hidden>
+      <h2>Tasks</h2>
+      <p class="lede" id="tasks-lede"></p>
+      <div id="task-rows"></div>
+    </section>
+
+    <section id="failure" class="screen" hidden>
+      <div class="accent-rule"></div>
+      <h1>Throughline couldn't start.</h1>
+      <p class="reminder" id="failure-text"></p>
+      <div class="checklist">
+        <p class="kicker">What to check</p>
+        <ul id="failure-list"></ul>
+      </div>
+      <button id="retry" class="solid">Try again</button>
+    </section>
+
+  </main>
+</div>
+
+<div id="conflict" class="scrim" hidden>
+  <div class="modal">
+    <h3>This file changed on disk.</h3>
+    <p>Something else wrote to it while you were editing. Nothing you typed is lost either way.</p>
+    <div class="row">
+      <button id="keep-mine" class="solid">Keep what I typed</button>
+      <button id="take-theirs" class="hollow">Load the newer version</button>
     </div>
-    <div id="conflict" hidden>
-      <p id="conflict-text"></p>
-      <button id="keep-mine">Keep what I wrote</button>
-      <button id="take-theirs">Show me theirs instead</button>
-    </div>
-    <article id="rendered"></article>
-    <section id="gaps" hidden></section>
-    <textarea id="source" hidden spellcheck="false"></textarea>
-  </section>
-
-  <p id="empty" hidden>No projects yet. Run <code>throughline init</code> in a repo, then add it.</p>
-</main>
+  </div>
+</div>
 
 <script src="/app.js"></script>
 </body>

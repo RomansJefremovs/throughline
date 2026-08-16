@@ -386,6 +386,41 @@ def test_artifact_is_not_found_before_it_is_written(tmp_path, monkeypatch):
     assert response.status == 404
 
 
+def test_stale_is_reported_only_for_the_node_you_opened(tmp_path, monkeypatch):
+    """Rule 3: never broadcast. It is asked for one document at a time."""
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    payload = _json(
+        serve.route(
+            "GET", "/api/stale", {"repo": str(repo), "node": "functional-requirements"}, b""
+        )
+    )
+    assert payload["stale"] is False
+
+    artifacts.write_artifact(repo, "problem-statement", "First.", "S.")
+    serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"changed after the fact\n",
+    )
+    assert "changed" in _json(
+        serve.route(
+            "GET", "/api/stale", {"repo": str(repo), "node": "functional-requirements"}, b""
+        )
+    )
+
+
+def test_no_other_endpoint_reports_staleness(tmp_path, monkeypatch):
+    project = _json(
+        serve.route(
+            "GET", "/api/project", {"repo": str(_project(tmp_path, monkeypatch))}, b""
+        )
+    )
+    assert "stale" not in json.dumps(project)
+
+
 def test_reading_an_artifact_returns_a_version(tmp_path, monkeypatch):
     from throughline import artifacts
 
