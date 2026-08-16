@@ -1,0 +1,334 @@
+version: 1
+project: Throughline
+created: '2026-08-16T10:06:18Z'
+flags:
+  has_db: false
+  has_ui: true
+  has_state: true
+  multi_service: false
+on_demand: {}
+last_node: state-machine
+last_note: 'All eight nodes are written. The pipeline produced two real code changes:
+  a drafted state replacing the confirmed boolean, and the resume fix. Next: decide
+  what gets built first.'
+nodes:
+  problem-statement:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'All three: a solo dev running several repos at once, a freelancer working
+        in repos they do not own, and anyone returning to a project after time away.
+        The common thread is a single person with no one to ask.'
+      q2: 'The primary cost is management overhead itself. For an ADHD brain, project
+        management competes directly with delivery for the same scarce resource -
+        focus - and every switch into managing is focus not spent building. The goal
+        is for the tool to absorb management so hyperfocus goes entirely into delivering.
+        Four consequences follow: unpaid rework when a decision is forgotten; time
+        re-deriving what was already known; design work that never happens because
+        it is too heavy to start; and outright abandonment when something demands
+        too much attention.'
+      q3: 'All three, in order of what the code can promise. Deliverable: you open
+        it and are working within seconds - one next action, no reading, no deciding.
+        Deliverable: nothing about the project lives only in your head, because every
+        decision and its reason is written down and findable. The aim the other two
+        serve: project management stops being a separate activity and becomes a by-product
+        of conversations that were happening anyway.'
+      q4: Confirmed. Today the coping mechanism is the AI conversation itself plus
+        whatever markdown happened to get written - docs/superpowers/specs, CLAUDE.md,
+        memory files - with nothing linking them. It works while the session is warm
+        and evaporates when the session ends; the real thread is left in chat transcripts
+        nobody scrolls back through.
+    upstream_hashes: {}
+    updated: '2026-08-16T10:40:17Z'
+  functional-requirements:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Two actors. The developer answers questions, reads artifacts and edits
+        them directly. Claude runs the interview, invokes the CLI and writes the artifacts.
+        Outside tools - issue trackers, MCP servers, CI, git - are not actors; Claude
+        reaches for them on the developer''s behalf. Keeping Claude as an actor is
+        deliberate: most of the product''s binding rules are constraints on what Claude
+        must and must not do, and those need somewhere to live.'
+      q2: 'Efficient management of projects - plural - for an ADHD brain. The core
+        job is not scoped to one repo: deciding which of several live projects needs
+        attention, and what the one next thing is there, is the job itself. Answering
+        ''where was I and what now'' is how that job is performed inside a single
+        repo; doing it across repos without the user having to hold the set in their
+        head is the part that makes it management rather than note-taking. Everything
+        else - artifacts, diagrams, the app - exists to make that answer trustworthy.'
+      q3: 'All 18 capabilities stay - nothing struck. Eight built (init, node listing,
+        scoped context, immediate answer persistence, artifact write, staleness detection,
+        repo scan, one next action), four specced (task pipelines, two-sided artifacts,
+        repo setup, gap-to-task promotion), six in the app (cross-repo overview, project
+        switcher, node graph, rendered artifacts, in-place editing, start-next-node).
+        Noted risk carried forward rather than cut: gap-to-task promotion is the capability
+        that can turn artifacts into a backlog, so it keeps the hard rule that promotion
+        is always explicit and gaps never become tasks automatically.'
+      q4: The ten hard rules already written into the spec and SKILL.md are confirmed
+        as the complete never-list. (1) Never open with a list of undone things -
+        one next action only. (2) Never hand over a document to review - one question
+        at a time. (3) Every question goes through the interactive picker, never prose
+        options. (4) Save every answer immediately, never batch. (5) Never broadcast
+        staleness - no counts, badges, red. (6) Never load the whole repo - only a
+        node's declared inputs. (7) Four or five questions per node, eight ceiling.
+        (8) Gaps never become tasks automatically - promotion is explicit. (9) Never
+        display an open-task count. (10) Files stay hand-editable markdown and are
+        the truth. A proposed eleventh rule - that the app must never become required
+        - was offered and not adopted; the app's own boundaries are left to be decided
+        in architecture rather than fixed here.
+      q5: 'No performance or scale figures. This was explicitly rejected as the wrong
+        frame: the requirement is about getting to work as a UX and process property,
+        not a measured metric. The thing being minimised is the number of steps and
+        decisions between opening the tool and doing real work - not milliseconds.
+        A screen that loads instantly but asks the user to choose what to work on
+        has already failed the requirement, while a slower one that names the next
+        action has met it. Two figures that do exist stay as they are because they
+        bound the interview rather than the software: eight questions is a hard ceiling
+        per node, and a task pipeline should take about ten minutes end to end.'
+    upstream_hashes:
+      problem-statement: df50bc5df525d6dda38686264aff73c31ea26f1d490f5f6b50d848b6cc82d975
+    updated: '2026-08-16T11:13:59Z'
+  use-case-diagram:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Seven use cases, confirmed at that grain. UC1 start tracking a repo; UC2
+        work the next node; UC3 find where to work across projects; UC4 read the record;
+        UC5 correct the record; UC6 run a task; UC7 promote a gap to a task. UC3 is
+        deliberately separate from UC2: choosing which project to work in is its own
+        act, not a step inside working, and it is the one that traces to the core
+        job of managing projects plural. Both actors appear - the developer initiates
+        all seven, Claude participates in UC1, UC2, UC6 and UC7.'
+      q2: 'Clicking the next node in the app hands it to Claude Code: the app opens
+        Claude Code in that repo with the node already requested, so the user lands
+        mid-interview. The app stays a viewer and editor and does not re-implement
+        the conversation. A gap was identified during this question and verified against
+        the code: when a session dies mid-node the data survives - answers are persisted
+        immediately by rule 4 - but the conversation does not. Nothing reads the saved
+        answers back, so a fresh session restarts the interview at question one and
+        asks what was already answered; and the where-you-left-off note is only written
+        when a node completes, so it still describes the previous node. Two fixes
+        are adopted. First, status reads back the answers already given so the interview
+        resumes at the next unanswered question. Second, every saved answer refreshes
+        the where-you-left-off line so it is never stale. These are separate problems:
+        one prevents repeated questions, the other prevents the tool looking as though
+        nothing happened. Resume is therefore a behaviour of UC2, not a new use case.'
+      q3: 'Decided on ADHD grounds after the user declined to choose and asked that
+        the ADHD perspective decide it. The front door must contain zero decisions,
+        and choosing between five projects is a decision - so a project chooser is
+        not the opening screen. The app opens on the project last worked in, showing
+        one next action, ready to work immediately. The cross-project overview still
+        exists but is reached deliberately, one click away, and shows state only -
+        which projects are alive and roughly how far each has come - never a next
+        action per project. That keeps the overview from being five undone things
+        on one screen, which is the shape rule 1 forbids. This matches the Obsidian
+        model the user asked for: it opens the note you had open, and the vault switcher
+        is present without being in your face. UC3 therefore has two distinct entries:
+        an implicit one on launch that requires no decision, and an explicit one when
+        the user wants the overview.'
+      q4: 'Editing an artifact by hand produces no visible consequence at the time.
+        No marks, no highlights, no counts on downstream documents. The next time
+        the user actually opens a document whose input changed, one sentence says
+        so, with a one-word way to dismiss it. This is rule 5 applied to the app rather
+        than only to the CLI, which matters because the app is the surface where staleness
+        badges would otherwise reappear as a natural UI decision. It also gives capability
+        6 - staleness detection - its only legitimate use: it is computed always and
+        surfaced only just in time, to one person, in one place.'
+    upstream_hashes:
+      functional-requirements: 788cab7f74b3ec95ce8aae2e4aab58c63449cf5e12329cb9fa5e9a440f32a3e2
+    updated: '2026-08-16T11:50:37Z'
+  use-case-descriptions:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Draft first, then confirm - but the draft is built from the bounded scan,
+        not from reading the codebase. The user rejected the framing on token grounds:
+        reading tens of thousands of lines to draft documents is wasteful. Costs are
+        roughly: whole-repo read, ten thousand-plus lines and a dead session; throughline
+        scan as built, around two hundred lines of file names, recent commits and
+        README, which yields structure and vocabulary but not decisions; targeted
+        file reads while answering a question, one or two files each, which yield
+        exactly the fact the question needs. The adopted flow is therefore: scan cheaply,
+        draft structure from that, then read individual source files only when a specific
+        question needs a specific fact - as happened on Scissors Farm, where db.py
+        was read to answer the schema question rather than to understand the project.
+        This extends rule 6 beyond artifacts to source code: never read the repository
+        to understand it, only to answer a question that has already been asked.'
+      q2: 'UC1 asks, once, which relationship the user wants with the repo: a full
+        project pipeline, or task-only setup. Task-only records vocabulary, how to
+        run the project, and what tools are available - and never raises architecture.
+        A client repo like Geedie, where the work is fixing bugs someone else specified,
+        takes task-only. The user''s own repos take the full pipeline. Ownership is
+        not inferred from git remote or commit authorship: guessing was rejected,
+        consistent with the earlier decision that ownership may suggest a default
+        but never decides anything on its own. The setup question is the place where
+        the two pipeline kinds already in the requirements become visible to the user.'
+      q3: UC6 begins with Claude pulling the ticket itself, using whatever integration
+        repo setup recorded. On a repo with a Trello MCP, Claude fetches the card
+        and opens the Understand node with a playback - here is what I think you have
+        been asked to do - which the user corrects. There is no paste step, and Understand
+        starts already half-answered. The original ticket text is retained alongside
+        the user's correction, so the client's own wording survives for any later
+        scope dispute. Where no integration exists, the user supplies the ticket text
+        and the flow is otherwise identical.
+      q4: 'Running a node whose dependencies are empty is allowed, but Claude offers
+        to do the missing prerequisite first rather than proceeding silently. The
+        user chose this over the recommendation of running immediately. It does not
+        conflict with the zero-decisions rule: that rule governs the front door, where
+        the user has not yet chosen anything. Jumping ahead is itself a deliberate
+        choice, so a single follow-up question at that point is not a cold-start decision.
+        If the user declines, the node runs with whatever context exists and records
+        in one line which input was missing.'
+    upstream_hashes:
+      functional-requirements: 788cab7f74b3ec95ce8aae2e4aab58c63449cf5e12329cb9fa5e9a440f32a3e2
+      use-case-diagram: 214b9d57b0f8ca423083347efcb3ec0b5f8daab4335960a8db4536ee07fece91
+    updated: '2026-08-16T12:00:22Z'
+  domain-model:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Seven core entities, confirmed as the code already names them: Repo, Pipeline,
+        Node, Artifact, Answer, Task, Gap. Phase and Flag were considered and left
+        out as properties of Pipeline rather than entities with their own life. Answer
+        was considered for folding into Node and kept separate, because it is the
+        one thing rule 4 exists to protect and it needs a name to be talked about.
+        The Node split is deliberate and preserved: NodeDef is the global definition
+        shipped with the package, NodeState is the per-repo record living in pipeline.yaml.'
+      q2: 'Decided rather than asked - the user had no view and it is a modelling
+        call. A Gap is a reading, not a stored thing: it is the difference between
+        an artifact''s current and target sides, computed on demand and never persisted.
+        Storing gaps would give them a lifecycle; a lifecycle needs closing; closing
+        needs a list of open ones - which is exactly the tracker the task spec warns
+        against. Promotion still works without an entity: the Task records the artifact
+        and the sentence it came from, so lineage survives. Relationships were likewise
+        derived from the code rather than asked, since the code already states them
+        unambiguously.'
+      q3: 'Project is the user-facing word. The app says projects, the switcher switches
+        projects, and the requirement is stated as managing projects plural. Pipeline
+        becomes internal vocabulary used by the code and by pipeline.yaml only, never
+        shown. Repo keeps its narrow meaning: the folder on disk that a project lives
+        in. This is a rename toward existing usage rather than away from it - project
+        is the word the user actually says - and it removes two of the three competing
+        words from anything the user reads.'
+    upstream_hashes:
+      problem-statement: df50bc5df525d6dda38686264aff73c31ea26f1d490f5f6b50d848b6cc82d975
+      functional-requirements: 788cab7f74b3ec95ce8aae2e4aab58c63449cf5e12329cb9fa5e9a440f32a3e2
+    updated: '2026-08-16T12:10:29Z'
+  test-cases:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Test both: one case per use case, proving the flow works, and one per hard
+        rule, proving the tool stays honest. The rule tests are the unusual half and
+        the reason this artifact matters - a rule like ''open the app and count the
+        decisions before you can work, expect zero'' is genuinely checkable, and it
+        covers the failure mode that has actually happened before, which is not the
+        software breaking but the software becoming unusable. Flow tests alone would
+        pass on a version that greets the user with a backlog; rule tests alone would
+        pass on a version where nothing works.'
+      q2: 'Test cases may be written for behaviour that is known broken, and are marked
+        known-failing when they are. The resume case is the first: a dead session
+        currently keeps its answers but re-asks the questions, and the case is written
+        properly against the intended behaviour with the two named fixes attached.
+        This repeats what worked on the Scissors Farm run - a test written to fail
+        is a bug that cannot be quietly forgotten, and it survives without needing
+        a separate tracker, which matters given gaps are deliberately not stored.
+        A known-failing marker also keeps the signal readable: an unmarked red result
+        means a regression.'
+      q3: 'The suite is split by who can prove what. Claude runs every case that is
+        checkable from files or CLI output - answer persistence, context line counts,
+        what status prints, whether a count or badge appears in rendered output -
+        and reports the result with the evidence. The user ticks only what genuinely
+        needs eyes: whether the front door feels like work, whether a diagram reads
+        correctly, whether a sentence is true. This keeps the manual list as short
+        as possible, which is itself a requirement: a long tick-list is precisely
+        the artifact that gets abandoned on a second run. Where a rule test can be
+        reduced to counting - decisions before work, actions named, counts on screen
+        - it is counted rather than judged, so it stays repeatable.'
+    upstream_hashes:
+      use-case-descriptions: 05fa5e3bcdb54ba4018a49659ee58795aa71ead3b2bcbbfee07ee1e1cd71ed20
+    updated: '2026-08-16T12:24:03Z'
+  architecture:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Delivery is a real desktop application built with Tauri - the user chose
+        this over a local server opened in the browser. Consequences accepted: the
+        Rust toolchain becomes a build dependency on Windows, and packaging and updates
+        become real work. What does not change is the frontend, since Tauri hosts
+        a webview either way. Ownership of logic was not decided by the user and was
+        settled here: the Tauri shell spawns the existing Python CLI as a local sidecar
+        server and displays its pages. Rust stays a thin shell. Rewriting the rules
+        in Rust, or reimplementing them in the frontend, were both rejected for the
+        same reason - the rules would then exist twice, and the CLI that already has
+        126 tests behind it would become the second-class copy. One implementation,
+        one place to be right.'
+      q2: 'Both handoff routes are supported, selected by a preference. Both mechanisms
+        were verified to exist on the target machine rather than assumed: a claude
+        protocol handler is registered to Claude.exe with a single argument, and claude.exe
+        is on PATH via WinGet links. Terminal route: spawn the claude CLI with the
+        repository as working directory and the node as the opening prompt - works
+        today with no unknowns, and it is the default because it is also the fallback
+        and therefore has to exist either way. Claude Desktop route: open a claude
+        URL carrying a repo-and-prompt payload, degrading silently to the terminal
+        if the payload is not accepted. The open question is what claude URLs actually
+        accept; it may only handle authentication callbacks, so Desktop remains an
+        option pending a spike rather than a promise. Supporting both costs one spike
+        and a toggle rather than a second implementation, and it removes a window
+        switch from the most-repeated action in the product.'
+      q3: 'Artifacts are rendered by default, with source available on demand. The
+        reading view shows the formatted document with mermaid diagrams drawn; choosing
+        to edit swaps that block to raw markdown in a plain text area, and saving
+        writes the file exactly as typed. This is Obsidian''s actual behaviour and
+        it needs only a renderer plus a text area - no rich-text engine, no custom
+        editor. Live preview, where formatting appears while typing, was rejected
+        despite being the nicest to use: it is the single hardest component in the
+        build and would consume the schedule, and it risks the editor rewriting the
+        user''s markdown, which would violate the rule that the file is the truth.'
+    upstream_hashes:
+      functional-requirements: 788cab7f74b3ec95ce8aae2e4aab58c63449cf5e12329cb9fa5e9a440f32a3e2
+      domain-model: 5b5482c8623ecc9f7afdf1a141fc74c25cfb0bd4ac89fab0f1de707f30441bbb
+    updated: '2026-08-16T12:43:38Z'
+  state-machine:
+    status: current
+    confirmed: true
+    answers:
+      q1: 'Four named states replace three statuses plus a confirmed boolean: empty,
+        drafted, in progress, current. The boolean disappears into the status it was
+        always encoding - a node with confirmed false and status current is precisely
+        a drafted node. Naming it matters because drafting became a real flow in UC1:
+        pointing at an existing repository produces a full set of drafted nodes in
+        one pass, and drafted is the honest word for what those are. Keeping the boolean
+        would leave the status field claiming current for a document nobody has read.
+        This is a change to the built code, not a description of it: state.py currently
+        defines EMPTY, IN_PROGRESS and CURRENT with a separate confirmed field, and
+        status.next_node already treats current-but-unconfirmed as its own priority,
+        which is the same distinction discovered a second time.'
+      q2: 'Staleness is never a state. A node whose inputs changed stays current.
+        Staleness is computed from stored upstream hashes at the moment someone opens
+        the node, and is surfaced there as one dismissable sentence - never stored
+        as status, never aggregated, never shown on the graph. Making it a state was
+        rejected because a single edit to the problem statement would move six nodes
+        out of current at once, producing a screen full of changed markers that arrived
+        unasked; that is the exact pattern rule 5 forbids. Deferring the state change
+        until the user has looked was also rejected: a state that depends on whether
+        someone has looked at it cannot be trusted or tested. Keeping staleness out
+        of the state model enforces rule 5 in the data rather than relying on interface
+        discipline to hold the line.'
+      q3: 'A task carries its own lifecycle: open, in progress, done, abandoned -
+        stored on the task rather than derived from its four nodes. This was chosen
+        over deriving state from node status. The cost is accepted and worth naming:
+        it is a second thing that must be kept in step with the nodes underneath it,
+        and it is the first field in the whole design that resembles a ticket status,
+        which is the shape the product otherwise avoids. What it buys is that abandonment
+        becomes expressible. A derived model cannot distinguish a task walked away
+        from permanently from one that will be picked up tomorrow, so a dead task
+        would compete for the single next-action slot indefinitely. Since the next
+        action is the core promise, a task that can be honestly closed without being
+        finished protects it. The mitigation for the sync cost is that node states
+        remain authoritative for progress; the task status answers only whether the
+        task is live, and is never aggregated into a count.'
+    upstream_hashes:
+      domain-model: 5b5482c8623ecc9f7afdf1a141fc74c25cfb0bd4ac89fab0f1de707f30441bbb
+    updated: '2026-08-16T12:52:00Z'
