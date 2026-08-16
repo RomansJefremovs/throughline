@@ -10,6 +10,7 @@ CLI, it has been implemented twice and one copy will drift.
 """
 
 import json
+import subprocess
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -132,6 +133,43 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     return _json_response({"node": node, "saved": True})
 
 
+def spawn_claude(repo: Path, prompt: str) -> None:
+    """Open a Claude session in the repo, already asking for the node.
+
+    A new console rather than a child of the server: the session outlives
+    the app, and closing the app must never kill work in progress.
+    """
+    creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    subprocess.Popen(
+        ["claude", prompt],
+        cwd=str(repo),
+        creationflags=creation,
+        shell=False,
+    )
+
+
+def _post_start(query: dict) -> Response:
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node_id = query.get("node") or ""
+    # The node id is checked against the graph, not sanitised. It reaches
+    # a process argument, and an allow-list is the only check that cannot
+    # be talked around.
+    try:
+        node = nodes_module.get_node(node_id)
+    except KeyError:
+        return _error(400, "no such node")
+    prompt = f"Use the throughline skill and work the {node.id} node."
+    try:
+        spawn_claude(repo, prompt)
+    except FileNotFoundError:
+        return _error(500, "claude was not found on PATH")
+    except OSError as err:
+        return _error(500, f"could not start claude: {err}")
+    return _json_response({"node": node.id, "started": True})
+
+
 def _asset(name: str, content_type: str) -> Response:
     path = ASSETS / name
     if not path.is_file():
@@ -163,6 +201,8 @@ def route(method: str, path: str, query: dict, body: bytes) -> Response:
         return _get_artifact(query)
     if method == "PUT" and path == "/api/artifact":
         return _put_artifact(query, body)
+    if method == "POST" and path == "/api/start":
+        return _post_start(query)
     return _error(404, "no such route")
 
 
@@ -184,6 +224,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         self._respond("PUT")
+
+    def do_POST(self) -> None:
+        self._respond("POST")
 
     def log_message(self, *args) -> None:
         """Quiet by default - the terminal is not the product."""

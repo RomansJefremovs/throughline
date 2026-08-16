@@ -232,6 +232,7 @@ function setEditing(on) {
   el("source").hidden = !on;
   el("rendered").hidden = on;
   el("edit").hidden = on;
+  el("work").hidden = on;
   el("save").hidden = !on;
   el("cancel").hidden = !on;
 }
@@ -271,9 +272,34 @@ async function start() {
   await open(home.path);
 }
 
+/* The handoff. The sidecar spawns the session because a browser tab
+ * cannot; under Tauri the same endpoint does the same thing. */
+async function startNode(nodeId, button) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Opening Claude…";
+  const url = `/api/start?repo=${encodeURIComponent(current.path)}&node=${nodeId}`;
+  const response = await fetch(url, { method: "POST" });
+  if (response.ok) {
+    button.textContent = "Opened in Claude";
+  } else {
+    const problem = await response.json().catch(() => ({}));
+    button.textContent = problem.error || "Could not open Claude";
+  }
+  setTimeout(() => {
+    button.disabled = false;
+    button.textContent = label;
+  }, 4000);
+}
+
 el("back").onclick = showGraph;
 el("edit").onclick = () => setEditing(true);
 el("cancel").onclick = () => setEditing(false);
+
+el("next-action").onclick = (event) => startNode(current.next, event.currentTarget);
+
+el("work").onclick = (event) =>
+  startNode(el("artifact").dataset.node, event.currentTarget);
 
 el("save").onclick = async () => {
   const node = el("artifact").dataset.node;

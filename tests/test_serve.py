@@ -96,6 +96,55 @@ def test_project_refuses_a_repo_that_is_not_tracked(tmp_path, monkeypatch):
     assert response.status == 403
 
 
+def test_start_spawns_claude_in_the_repo(tmp_path, monkeypatch):
+    """The one action the app exists to make cheap."""
+    repo = _project(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append((r, p)))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "node": "problem-statement"}, b""
+    )
+    assert response.status == 200
+    assert calls[0][0] == repo.resolve()
+    assert "problem-statement" in calls[0][1]
+
+
+def test_start_refuses_an_untracked_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(stranger), "node": "x"}, b""
+    )
+    assert response.status == 403
+
+
+def test_start_refuses_an_unknown_node(tmp_path, monkeypatch):
+    """The node id reaches a shell, so it is checked against the graph."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "node": "rm -rf /"}, b""
+    )
+    assert response.status == 400
+
+
+def test_start_reports_when_claude_is_missing(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+
+    def boom(_repo, _prompt):
+        raise FileNotFoundError("claude")
+
+    monkeypatch.setattr(serve, "spawn_claude", boom)
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "node": "problem-statement"}, b""
+    )
+    assert response.status == 500
+    assert "claude" in _json(response)["error"].lower()
+
+
 def test_artifact_returns_the_markdown(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
     from throughline import artifacts
