@@ -103,6 +103,44 @@ ever sees it. `--body` exists only for one-line bodies.
 - `throughline gaps` - differences between the sides, computed on the spot
 - `throughline promote <node> "<gap title>"` - turn one gap into a task
 
+### Setup commands
+
+- `throughline detect` - what the repo is wired to. Works before `init`
+- `throughline init --project NAME --task-only` - track a repo for tasks only
+- `throughline setup --summary S --body-file PATH` - write `setup.md`
+
+## Repo setup
+
+Not every repo deserves twelve nodes. A client repo where the work is
+fixing what someone else specified needs four things, once:
+
+| Records | Why |
+|---|---|
+| **What this is** | one paragraph, so a cold session knows where it is |
+| **Vocabulary** | the highest-value part - their words, not yours |
+| **How to run it** | launch, test and verify commands |
+| **What it is wired to** | MCP servers, issue tracker, CI, launch configs |
+
+**Run `throughline detect` first and never ask what a file already
+answers.** It reads MCP server declarations, launch configs, CI workflows
+and the obvious run and test commands. Present what it found and ask only
+for corrections and for the parts no file can answer - the vocabulary
+above all.
+
+**The commands it reports are guesses.** Say so when you show them.
+
+**The fourth row is the one that changes daily use.** A repo with a ticket
+integration means the task flow pulls the ticket rather than asking for a
+paste, and that only happens because setup went looking.
+
+**`--task-only` means no project pipeline at all.** No nodes, no
+architecture questions, nothing about the system as a whole. Ask which the
+user wants when first pointing at a repo, once.
+
+**Setup is optional and can come later.** A task runs perfectly well
+without it. Offer setup when a repo turns out to be worth it - the second
+or third task in - rather than demanding it up front.
+
 ## Two sides
 
 A project node can describe two things: **what is true today**, and **what

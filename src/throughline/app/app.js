@@ -190,9 +190,26 @@ function drawRail(projects) {
   });
 }
 
+/* A task-only repo has no node graph. Saying so beats an empty panel,
+ * which reads as breakage. */
+async function drawSetup(graph) {
+  const data = await api(`/api/setup?repo=${encodeURIComponent(current.path)}`);
+  const box = document.createElement("div");
+  box.className = "setup";
+  box.innerHTML = data
+    ? render(data.text)
+    : "<p>Tracked for task work only. No setup written yet — " +
+      "ask Claude to set this repo up when it earns it.</p>";
+  graph.appendChild(box);
+}
+
 function drawGraph(nodes) {
   const graph = el("graph");
   graph.innerHTML = "";
+  if (current.task_only) {
+    drawSetup(graph);
+    return;
+  }
   PHASES.forEach((phase) => {
     const inPhase = nodes.filter((n) => n.phase === phase);
     if (!inPhase.length) return;

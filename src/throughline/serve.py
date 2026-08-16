@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import gaps, registry, tasks
+from . import gaps, registry, setup, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -93,8 +93,13 @@ def _get_project(query: dict) -> Response:
         return failure
     if not state_module.exists(repo):
         return _error(404, "no pipeline in that repo")
+    loaded = state_module.load(repo)
     payload = registry.describe(repo)
-    payload["nodes"] = _nodes_payload(repo)
+    # An empty node list reads as breakage unless the app can say why it
+    # is empty, so the repo kind travels with it.
+    payload["task_only"] = loaded.task_only
+    payload["target_side"] = loaded.target_side
+    payload["nodes"] = [] if loaded.task_only else _nodes_payload(repo)
     return _json_response(payload)
 
 
@@ -132,6 +137,16 @@ def _get_tasks(query: dict) -> Response:
             for task in tasks.all_tasks(repo)
         ]
     )
+
+
+def _get_setup(query: dict) -> Response:
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    path = setup.setup_path(repo)
+    if not path.is_file():
+        return _error(404, "no setup written for this repo")
+    return _json_response({"text": path.read_text(encoding="utf-8")})
 
 
 def _get_gaps(query: dict) -> Response:
@@ -293,6 +308,8 @@ def route(method: str, path: str, query: dict, body: bytes) -> Response:
         return _get_projects()
     if method == "GET" and path == "/api/project":
         return _get_project(query)
+    if method == "GET" and path == "/api/setup":
+        return _get_setup(query)
     if method == "GET" and path == "/api/gaps":
         return _get_gaps(query)
     if method == "GET" and path == "/api/tasks":

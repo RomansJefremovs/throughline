@@ -49,6 +49,10 @@ class PipelineState:
     # consequence of who owns the repo. Proposing improvements to a
     # codebase you do not own is a perfectly good reason to turn it on.
     target_side: bool = False
+    # A repo tracked only for task work. No project pipeline, no nodes,
+    # and nothing about architecture ever raised. Most client repos are
+    # this: the work is fixing what someone else specified.
+    task_only: bool = False
 
 
 def project_dir(repo: Path) -> Path:
@@ -68,6 +72,7 @@ def init(
     project: str,
     flags: dict[str, bool],
     target_side: bool = False,
+    task_only: bool = False,
 ) -> PipelineState:
     resolved = {name: bool(flags.get(name, False)) for name in nodes_module.FLAGS}
     result = PipelineState(
@@ -76,9 +81,11 @@ def init(
         created=utcnow(),
         flags=resolved,
         target_side=bool(target_side),
+        task_only=bool(task_only),
     )
-    for node in nodes_module.active_nodes(resolved):
-        result.nodes[node.id] = NodeState()
+    if not result.task_only:
+        for node in nodes_module.active_nodes(resolved):
+            result.nodes[node.id] = NodeState()
     save(repo, result)
     return result
 
@@ -93,6 +100,7 @@ def save(repo: Path, state: PipelineState) -> None:
         "last_node": state.last_node,
         "last_note": state.last_note,
         "target_side": state.target_side,
+        "task_only": state.task_only,
         "nodes": {
             node_id: {
                 "status": entry.status,
@@ -138,6 +146,7 @@ def load(repo: Path) -> PipelineState:
         last_note=payload.get("last_note") or "",
         last_node=payload.get("last_node"),
         target_side=bool(payload.get("target_side", False)),
+        task_only=bool(payload.get("task_only", False)),
     )
     for node_id, entry in (payload.get("nodes") or {}).items():
         entry = entry or {}

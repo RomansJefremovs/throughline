@@ -270,6 +270,45 @@ def _body_file(tmp_path):
     return path
 
 
+def test_init_can_make_a_repo_task_only(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "geedie", "--task-only")
+    assert state.load(tmp_path).task_only is True
+    code, out = run(capsys, "next", "--repo", str(tmp_path))
+    assert out.strip() == ""
+
+
+def test_detect_reports_what_the_repo_is_wired_to(tmp_path, capsys):
+    (tmp_path / ".mcp.json").write_bytes(b'{"mcpServers": {"trello": {}}}')
+    code, out = run(capsys, "detect", "--repo", str(tmp_path), "--json")
+    assert code == 0
+    assert json.loads(out)["mcp_servers"] == ["trello"]
+
+
+def test_detect_works_before_init(tmp_path, capsys):
+    """Detection is how setup starts, so it cannot require a pipeline."""
+    code, _ = run(capsys, "detect", "--repo", str(tmp_path))
+    assert code == 0
+
+
+def test_setup_writes_the_document(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "geedie", "--task-only")
+    code, _ = run(
+        capsys, "setup",
+        "--repo", str(tmp_path),
+        "--summary", "A Vue client app.",
+        "--body", "Vocabulary: a board is a Trello board.",
+    )
+    assert code == 0
+    written = (tmp_path / "docs" / "project" / "setup.md").read_text(encoding="utf-8")
+    assert "Vocabulary: a board is a Trello board." in written
+
+
+def test_setup_requires_a_body(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "geedie", "--task-only")
+    code, _ = run(capsys, "setup", "--repo", str(tmp_path), "--summary", "S.")
+    assert code == 1
+
+
 def test_init_can_turn_the_target_side_on(tmp_path, capsys):
     run(capsys, "init", "--repo", str(tmp_path), "--project", "demo", "--target-side")
     assert state.load(tmp_path).target_side is True

@@ -120,6 +120,15 @@ h1 { font-size: 22px; font-weight: 500; margin: 0; }
 
 #on-task { margin: -8px 0 14px; color: var(--accent); }
 
+.setup { grid-column: 1 / -1; max-width: 640px; }
+.setup h1 { font-size: 20px; font-weight: 500; margin: 0 0 10px; }
+.setup h2 { font-size: 16px; font-weight: 500; margin: 22px 0 6px; }
+.setup table { border-collapse: collapse; margin: 14px 0; width: 100%; }
+.setup th, .setup td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
+.setup blockquote { margin: 0 0 16px; padding-left: 12px; border-left: 2px solid var(--accent); color: var(--muted); }
+.setup code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.setup pre { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; overflow-x: auto; }
+
 #gaps { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 18px; }
 #gaps h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
 

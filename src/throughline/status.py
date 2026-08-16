@@ -30,9 +30,17 @@ class Status:
     phases: list[PhaseProgress] = field(default_factory=list)
     task_slug: str | None = None
     task_title: str = ""
+    task_only: bool = False
 
 
 def _active(state: PipelineState) -> tuple:
+    """No project nodes at all in a task-only repo.
+
+    Omitted rather than shown as untouched: a client repo tracked for bug
+    fixes must never be greeted with eight things nobody intends to do.
+    """
+    if state.task_only:
+        return ()
     on_demand = tuple(state.on_demand.keys())
     return nodes_module.active_nodes(state.flags, on_demand)
 
@@ -72,6 +80,7 @@ def compute(state: PipelineState) -> Status:
         where_you_left_off=state.last_note or NO_NOTE,
         next_node=chosen,
         next_title=nodes_module.get_node(chosen).title if chosen else "",
+        task_only=state.task_only,
         answered=list(node_state(state, chosen).answers) if chosen else [],
         phases=progress(state),
     )
@@ -120,6 +129,9 @@ def render_text(status: Status) -> str:
         if status.answered:
             already = ", ".join(status.answered)
             lines.append(f"  already answered: {already}")
+    elif status.task_only:
+        # There is no pipeline here, so nothing can be complete.
+        lines.append("No task in flight. Start one when a ticket arrives.")
     else:
         lines.append("Nothing waiting. The pipeline is complete.")
     lines.append("")

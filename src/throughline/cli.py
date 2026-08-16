@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
-from . import gaps, registry, serve, tasks
+from . import gaps, registry, serve, setup, tasks
 from . import state as state_module
 from . import status as status_module
 
@@ -47,12 +47,19 @@ def cmd_init(args) -> int:
         print("a pipeline already exists here; refusing to overwrite it")
         return 1
     flags = parse_flags(args.flag or [])
-    result = state_module.init(repo, args.project, flags, target_side=args.target_side)
+    result = state_module.init(
+        repo,
+        args.project,
+        flags,
+        target_side=args.target_side,
+        task_only=args.task_only,
+    )
     _emit(
         {
             "project": result.project,
             "flags": result.flags,
             "target_side": result.target_side,
+            "task_only": result.task_only,
         },
         args.json,
         f"created {state_module.state_path(repo)}",
@@ -217,6 +224,26 @@ def cmd_confirm(args) -> int:
     entry.updated = state_module.utcnow()
     state_module.save(repo, loaded)
     _emit({"node": args.node, "status": entry.status}, args.json, f"confirmed {args.node}")
+    return 0
+
+
+def cmd_detect(args) -> int:
+    """What the repo is wired to, read rather than asked.
+
+    Deliberately works before `init`: detection is how setup starts, and
+    a repo can be looked at before anyone decides to track it.
+    """
+    found = setup.detect(Path(args.repo))
+    _emit(found, args.json, setup.render(found))
+    return 0
+
+
+def cmd_setup(args) -> int:
+    body = _resolve_body(args)
+    if body is None:
+        return 1
+    path = setup.write(Path(args.repo), body, args.summary)
+    _emit({"path": str(path)}, args.json, f"wrote {path}")
     return 0
 
 
@@ -394,8 +421,16 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--project", required=True)
     init.add_argument("--flag", action="append")
     init.add_argument("--target-side", action="store_true")
+    init.add_argument("--task-only", action="store_true")
 
     add("nodes", cmd_nodes, "list active nodes and their status")
+
+    add("detect", cmd_detect, "what this repo is wired to")
+
+    setup_cmd = add("setup", cmd_setup, "write the repo setup document")
+    setup_cmd.add_argument("--summary", required=True)
+    setup_cmd.add_argument("--body")
+    setup_cmd.add_argument("--body-file")
 
     target = add("target", cmd_target, "turn the target side on or off")
     target.add_argument("setting", choices=["on", "off"])

@@ -60,6 +60,18 @@ def test_skill_forbids_automatic_promotion():
     assert "never" in text and "promot" in text
 
 
+def test_skill_documents_the_setup_commands():
+    text = SKILL.read_text(encoding="utf-8")
+    for command in ("detect", "setup"):
+        assert f"throughline {command}" in text, f"{command} is undocumented"
+    assert "--task-only" in text
+
+
+def test_skill_says_setup_is_optional_and_can_come_later():
+    text = SKILL.read_text(encoding="utf-8").lower()
+    assert "setup" in text and "later" in text
+
+
 def test_skill_documents_the_two_sided_commands():
     text = SKILL.read_text(encoding="utf-8")
     for command in ("target on", "gaps", "promote"):

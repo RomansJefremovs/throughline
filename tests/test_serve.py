@@ -102,6 +102,36 @@ TWO_SIDED = (
 )
 
 
+def test_a_task_only_project_reports_itself_as_such(tmp_path, monkeypatch):
+    """An empty node graph reads as broken. Say why it is empty."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "geedie"
+    repo.mkdir()
+    state.init(repo, "Geedie", {}, task_only=True)
+    registry.add(repo)
+
+    payload = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert payload["task_only"] is True
+    assert payload["nodes"] == []
+
+
+def test_the_setup_document_is_served_when_there_is_one(tmp_path, monkeypatch):
+    from throughline import setup as setup_module
+
+    repo = _project(tmp_path, monkeypatch)
+    setup_module.write(repo, "A Vue client app.", "What this is.")
+
+    response = serve.route("GET", "/api/setup", {"repo": str(repo)}, b"")
+    assert response.status == 200
+    assert "A Vue client app." in _json(response)["text"]
+
+
+def test_no_setup_document_is_not_an_error(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route("GET", "/api/setup", {"repo": str(repo)}, b"")
+    assert response.status == 404
+
+
 def test_gaps_are_returned_only_from_their_own_endpoint(tmp_path, monkeypatch):
     """Nothing else may hand back a list of outstanding differences."""
     from throughline import artifacts
