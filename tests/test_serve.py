@@ -96,6 +96,81 @@ def test_project_refuses_a_repo_that_is_not_tracked(tmp_path, monkeypatch):
     assert response.status == 403
 
 
+TWO_SIDED = (
+    "# Current\n\nIt is like this.\n\n"
+    "# Target\n\n## Scope accounts to the project\n\nNeeds `project_id`.\n"
+)
+
+
+def test_gaps_are_returned_only_from_their_own_endpoint(tmp_path, monkeypatch):
+    """Nothing else may hand back a list of outstanding differences."""
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "architecture", TWO_SIDED, "Two sides.")
+
+    project = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert "gaps" not in project
+
+    listed = _json(serve.route("GET", "/api/gaps", {"repo": str(repo)}, b""))
+    assert listed[0]["title"] == "Scope accounts to the project"
+
+
+def test_gaps_can_be_scoped_to_one_node(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "architecture", TWO_SIDED, "Two sides.")
+
+    listed = _json(
+        serve.route("GET", "/api/gaps", {"repo": str(repo), "node": "architecture"}, b"")
+    )
+    assert len(listed) == 1
+    empty = _json(
+        serve.route(
+            "GET", "/api/gaps", {"repo": str(repo), "node": "problem-statement"}, b""
+        )
+    )
+    assert empty == []
+
+
+def test_promoting_needs_an_explicit_request(tmp_path, monkeypatch):
+    from throughline import artifacts, tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "architecture", TWO_SIDED, "Two sides.")
+
+    serve.route("GET", "/api/gaps", {"repo": str(repo)}, b"")
+    assert tasks.all_tasks(repo) == []
+
+    response = serve.route(
+        "POST",
+        "/api/promote",
+        {
+            "repo": str(repo),
+            "node": "architecture",
+            "title": "Scope accounts to the project",
+        },
+        b"",
+    )
+    assert response.status == 200
+    assert len(tasks.all_tasks(repo)) == 1
+
+
+def test_promoting_an_unknown_gap_is_refused(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "architecture", TWO_SIDED, "Two sides.")
+    response = serve.route(
+        "POST",
+        "/api/promote",
+        {"repo": str(repo), "node": "architecture", "title": "Invented"},
+        b"",
+    )
+    assert response.status == 404
+
+
 def test_project_names_the_live_task(tmp_path, monkeypatch):
     from throughline import tasks
 

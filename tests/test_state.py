@@ -94,6 +94,24 @@ def test_record_answer_stamps_updated(tmp_path):
     assert result.nodes["problem-statement"].updated.endswith("Z")
 
 
+def test_the_target_side_is_off_by_default(tmp_path):
+    """Describing what is comes free. Proposing what should be is a choice."""
+    assert state.init(tmp_path, "demo", {}).target_side is False
+
+
+def test_the_target_side_can_be_turned_on_at_init(tmp_path):
+    assert state.init(tmp_path, "demo", {}, target_side=True).target_side is True
+
+
+def test_the_target_side_is_a_switch_not_a_consequence(tmp_path):
+    """Changeable at any time, on any repo, whoever owns it."""
+    state.init(tmp_path, "demo", {})
+    state.set_target_side(tmp_path, True)
+    assert state.load(tmp_path).target_side is True
+    state.set_target_side(tmp_path, False)
+    assert state.load(tmp_path).target_side is False
+
+
 def test_drafted_is_a_status(tmp_path):
     assert state.DRAFTED == "drafted"
 

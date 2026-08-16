@@ -120,6 +120,35 @@ h1 { font-size: 22px; font-weight: 500; margin: 0; }
 
 #on-task { margin: -8px 0 14px; color: var(--accent); }
 
+#gaps { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 18px; }
+#gaps h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+
+.gap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.gap:last-child { border-bottom: 0; }
+
+.gap button {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 5px 11px;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.gap button:hover:not(:disabled) { border-color: var(--accent); }
+.gap button:disabled { color: var(--muted); cursor: default; }
+
 #tasks-toggle {
   border: 1px solid var(--line);
   background: var(--panel);

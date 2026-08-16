@@ -60,6 +60,24 @@ def test_skill_forbids_automatic_promotion():
     assert "never" in text and "promot" in text
 
 
+def test_skill_documents_the_two_sided_commands():
+    text = SKILL.read_text(encoding="utf-8")
+    for command in ("target on", "gaps", "promote"):
+        assert f"throughline {command}" in text, f"{command} is undocumented"
+
+
+def test_skill_states_the_two_side_headings():
+    """The parser looks for these exact headings, so the skill must too."""
+    text = SKILL.read_text(encoding="utf-8")
+    assert "# Current" in text and "# Target" in text
+
+
+def test_skill_says_the_target_side_is_a_switch_not_ownership():
+    text = SKILL.read_text(encoding="utf-8").lower()
+    assert "switch" in text
+    assert "ownership" in text
+
+
 @pytest.mark.parametrize("node_id", ["problem-statement", "functional-requirements", "domain-model"])
 def test_core_question_banks_exist(node_id):
     assert (QUESTIONS / f"{node_id}.md").is_file()

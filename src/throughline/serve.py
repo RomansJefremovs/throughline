@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import registry, tasks
+from . import gaps, registry, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -132,6 +132,37 @@ def _get_tasks(query: dict) -> Response:
             for task in tasks.all_tasks(repo)
         ]
     )
+
+
+def _get_gaps(query: dict) -> Response:
+    """Differences between an artifact's two sides, recomputed each time.
+
+    Its own endpoint, like the task list, so no other response can carry
+    a list of outstanding work by accident.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node = query.get("node")
+    found = gaps.for_node(repo, node) if node else gaps.for_repo(repo)
+    return _json_response(
+        [{"node": g.node, "title": g.title, "text": g.text} for g in found]
+    )
+
+
+def _post_promote(query: dict) -> Response:
+    """Turn one named gap into a task. Only ever one, only ever on request."""
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node = query.get("node")
+    title = (query.get("title") or "").strip().lower()
+    if not node or not title:
+        return _error(400, "node and title are required")
+    for gap in gaps.for_node(repo, node):
+        if gap.title.strip().lower() == title:
+            return _json_response({"slug": gaps.promote(repo, gap)})
+    return _error(404, "no such gap")
 
 
 def _artifact_target(repo: Path, query: dict) -> tuple[Path | None, Response | None]:
@@ -262,12 +293,16 @@ def route(method: str, path: str, query: dict, body: bytes) -> Response:
         return _get_projects()
     if method == "GET" and path == "/api/project":
         return _get_project(query)
+    if method == "GET" and path == "/api/gaps":
+        return _get_gaps(query)
     if method == "GET" and path == "/api/tasks":
         return _get_tasks(query)
     if method == "GET" and path == "/api/artifact":
         return _get_artifact(query)
     if method == "PUT" and path == "/api/artifact":
         return _put_artifact(query, body)
+    if method == "POST" and path == "/api/promote":
+        return _post_promote(query)
     if method == "POST" and path == "/api/start":
         return _post_start(query)
     return _error(404, "no such route")

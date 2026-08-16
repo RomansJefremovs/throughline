@@ -44,6 +44,11 @@ class PipelineState:
     nodes: dict[str, NodeState] = field(default_factory=dict)
     last_note: str = ""
     last_node: str | None = None
+    # Whether nodes propose where this should go, or only describe where
+    # it is. A switch, set once and changeable any time - never a
+    # consequence of who owns the repo. Proposing improvements to a
+    # codebase you do not own is a perfectly good reason to turn it on.
+    target_side: bool = False
 
 
 def project_dir(repo: Path) -> Path:
@@ -58,13 +63,19 @@ def exists(repo: Path) -> bool:
     return state_path(repo).is_file()
 
 
-def init(repo: Path, project: str, flags: dict[str, bool]) -> PipelineState:
+def init(
+    repo: Path,
+    project: str,
+    flags: dict[str, bool],
+    target_side: bool = False,
+) -> PipelineState:
     resolved = {name: bool(flags.get(name, False)) for name in nodes_module.FLAGS}
     result = PipelineState(
         version=VERSION,
         project=project,
         created=utcnow(),
         flags=resolved,
+        target_side=bool(target_side),
     )
     for node in nodes_module.active_nodes(resolved):
         result.nodes[node.id] = NodeState()
@@ -81,6 +92,7 @@ def save(repo: Path, state: PipelineState) -> None:
         "on_demand": state.on_demand,
         "last_node": state.last_node,
         "last_note": state.last_note,
+        "target_side": state.target_side,
         "nodes": {
             node_id: {
                 "status": entry.status,
@@ -125,6 +137,7 @@ def load(repo: Path) -> PipelineState:
         on_demand=payload.get("on_demand") or {},
         last_note=payload.get("last_note") or "",
         last_node=payload.get("last_node"),
+        target_side=bool(payload.get("target_side", False)),
     )
     for node_id, entry in (payload.get("nodes") or {}).items():
         entry = entry or {}
@@ -176,6 +189,14 @@ def record_answer(
         entry.status = IN_PROGRESS
     state.last_node = node_id
     state.last_note = _mid_interview_note(node_id, len(entry.answers))
+    save(repo, state)
+    return state
+
+
+def set_target_side(repo: Path, on: bool) -> PipelineState:
+    """Turn the target side on or off. Always allowed, always reversible."""
+    state = load(repo)
+    state.target_side = bool(on)
     save(repo, state)
     return state
 

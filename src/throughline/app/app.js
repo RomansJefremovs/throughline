@@ -254,6 +254,47 @@ async function showTasks() {
   target.hidden = false;
 }
 
+/* Gaps appear on the artifact that states them, never on a screen of
+ * their own, and each one is promoted by its own deliberate click. A
+ * screen listing every gap in the project is a backlog. */
+async function drawGaps(nodeId) {
+  const target = el("gaps");
+  target.innerHTML = "";
+  target.hidden = true;
+  const found = await api(
+    `/api/gaps?repo=${encodeURIComponent(current.path)}&node=${nodeId}`
+  );
+  if (!found || !found.length) return;
+
+  const heading = document.createElement("h2");
+  heading.textContent = "What this says should change";
+  target.appendChild(heading);
+
+  found.forEach((gap) => {
+    const row = document.createElement("div");
+    row.className = "gap";
+    const label = document.createElement("span");
+    label.textContent = gap.title || "the target side";
+    const button = document.createElement("button");
+    button.textContent = "Make this a task";
+    button.onclick = async () => {
+      button.disabled = true;
+      button.textContent = "Creating…";
+      const query = new URLSearchParams({
+        repo: current.path,
+        node: gap.node,
+        title: gap.title,
+      });
+      const response = await fetch(`/api/promote?${query}`, { method: "POST" });
+      button.textContent = response.ok ? "Task created" : "Could not create it";
+      if (response.ok) await open(current.path);
+    };
+    row.append(label, button);
+    target.appendChild(row);
+  });
+  target.hidden = false;
+}
+
 async function showArtifact(node, slug = null) {
   openTask = slug;
   const query = new URLSearchParams({ repo: current.path, node: node.id });
@@ -272,11 +313,17 @@ async function showArtifact(node, slug = null) {
   }
   el("artifact").dataset.node = node.id;
   setEditing(false);
+  if (slug) {
+    el("gaps").hidden = true;
+  } else {
+    drawGaps(node.id);
+  }
 }
 
 function setEditing(on) {
   el("source").hidden = !on;
   el("rendered").hidden = on;
+  if (on) el("gaps").hidden = true;
   el("edit").hidden = on;
   el("work").hidden = on;
   el("save").hidden = !on;

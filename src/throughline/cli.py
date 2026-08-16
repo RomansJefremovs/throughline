@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
-from . import registry, serve, tasks
+from . import gaps, registry, serve, tasks
 from . import state as state_module
 from . import status as status_module
 
@@ -47,9 +47,13 @@ def cmd_init(args) -> int:
         print("a pipeline already exists here; refusing to overwrite it")
         return 1
     flags = parse_flags(args.flag or [])
-    result = state_module.init(repo, args.project, flags)
+    result = state_module.init(repo, args.project, flags, target_side=args.target_side)
     _emit(
-        {"project": result.project, "flags": result.flags},
+        {
+            "project": result.project,
+            "flags": result.flags,
+            "target_side": result.target_side,
+        },
         args.json,
         f"created {state_module.state_path(repo)}",
     )
@@ -216,6 +220,40 @@ def cmd_confirm(args) -> int:
     return 0
 
 
+def cmd_target(args) -> int:
+    on = args.setting == "on"
+    state_module.set_target_side(Path(args.repo), on)
+    word = "on" if on else "off"
+    _emit({"target_side": on}, args.json, f"target side {word}")
+    return 0
+
+
+def cmd_gaps(args) -> int:
+    """List the differences between the two sides of every artifact.
+
+    Computed on the spot and never stored. Reading them creates nothing -
+    a gap becomes work only when the user promotes it.
+    """
+    repo = Path(args.repo)
+    found = gaps.for_node(repo, args.node) if args.node else gaps.for_repo(repo)
+    payload = [{"node": g.node, "title": g.title, "text": g.text} for g in found]
+    text = "\n".join(f"{g.node:<24} {g.title}" for g in found)
+    _emit(payload, args.json, text or "no gaps - nothing has a target side yet")
+    return 0
+
+
+def cmd_promote(args) -> int:
+    repo = Path(args.repo)
+    wanted = args.title.strip().lower()
+    for gap in gaps.for_node(repo, args.node):
+        if gap.title.strip().lower() == wanted:
+            slug = gaps.promote(repo, gap)
+            _emit({"slug": slug}, args.json, f"created {slug}")
+            return 0
+    print(f"no gap called {args.title!r} in {args.node}", file=sys.stderr)
+    return 1
+
+
 def cmd_task_new(args) -> int:
     repo = Path(args.repo)
     slug = tasks.create(repo, args.title, origin=args.origin, reference=args.reference)
@@ -355,8 +393,19 @@ def build_parser() -> argparse.ArgumentParser:
     init = add("init", cmd_init, "create the pipeline in a repo")
     init.add_argument("--project", required=True)
     init.add_argument("--flag", action="append")
+    init.add_argument("--target-side", action="store_true")
 
     add("nodes", cmd_nodes, "list active nodes and their status")
+
+    target = add("target", cmd_target, "turn the target side on or off")
+    target.add_argument("setting", choices=["on", "off"])
+
+    gaps_cmd = add("gaps", cmd_gaps, "differences between the two sides")
+    gaps_cmd.add_argument("node", nargs="?")
+
+    promote = add("promote", cmd_promote, "turn one gap into a task")
+    promote.add_argument("node")
+    promote.add_argument("title")
 
     ctx = add("context", cmd_context, "assemble the context for one node")
     ctx.add_argument("node")

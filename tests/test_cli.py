@@ -243,6 +243,84 @@ def test_forget_stops_tracking_a_repo(tmp_path, capsys, monkeypatch):
     assert registry.projects() == []
 
 
+TWO_SIDED = """# Current
+
+It is like this.
+
+# Target
+
+## Scope accounts to the project
+
+`credentials` needs `project_id`.
+"""
+
+
+def _two_sided(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo", "--target-side")
+    run(
+        capsys, "write", "architecture",
+        "--repo", str(tmp_path), "--summary", "Two sides.", "--body-file",
+        str(_body_file(tmp_path)),
+    )
+
+
+def _body_file(tmp_path):
+    path = tmp_path / "body.md"
+    path.write_bytes(TWO_SIDED.encode("utf-8"))
+    return path
+
+
+def test_init_can_turn_the_target_side_on(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo", "--target-side")
+    assert state.load(tmp_path).target_side is True
+
+
+def test_target_command_flips_the_switch(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    run(capsys, "target", "on", "--repo", str(tmp_path))
+    assert state.load(tmp_path).target_side is True
+    run(capsys, "target", "off", "--repo", str(tmp_path))
+    assert state.load(tmp_path).target_side is False
+
+
+def test_gaps_lists_the_target_side_differences(tmp_path, capsys):
+    _two_sided(tmp_path, capsys)
+    code, out = run(capsys, "gaps", "--repo", str(tmp_path), "--json")
+    assert code == 0
+    listed = json.loads(out)
+    assert listed[0]["title"] == "Scope accounts to the project"
+    assert listed[0]["node"] == "architecture"
+
+
+def test_gaps_is_quiet_when_there_are_none(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, out = run(capsys, "gaps", "--repo", str(tmp_path))
+    assert code == 0
+    assert "no gaps" in out.lower()
+
+
+def test_promote_turns_one_gap_into_a_task(tmp_path, capsys):
+    _two_sided(tmp_path, capsys)
+    code, out = run(
+        capsys, "promote", "architecture", "Scope accounts to the project",
+        "--repo", str(tmp_path), "--json",
+    )
+    assert code == 0
+    from throughline import tasks
+
+    slug = json.loads(out)["slug"]
+    assert tasks.next_node(tasks.load(tmp_path, slug)) == "analyze"
+
+
+def test_promote_refuses_a_gap_that_is_not_there(tmp_path, capsys):
+    _two_sided(tmp_path, capsys)
+    code, _ = run(
+        capsys, "promote", "architecture", "Something nobody wrote",
+        "--repo", str(tmp_path),
+    )
+    assert code == 1
+
+
 def test_task_new_creates_a_task(tmp_path, capsys):
     run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
     code, out = run(

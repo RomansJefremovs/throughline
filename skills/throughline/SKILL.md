@@ -97,6 +97,57 @@ ever sees it. `--body` exists only for one-line bodies.
 - `throughline task abandon <slug>` - drop it without finishing
 - `throughline task reopen <slug>` - pick it back up
 
+### Two-sided commands
+
+- `throughline target on` / `throughline target off` - the per-repo switch
+- `throughline gaps` - differences between the sides, computed on the spot
+- `throughline promote <node> "<gap title>"` - turn one gap into a task
+
+## Two sides
+
+A project node can describe two things: **what is true today**, and **what
+should be true**. Write them as two top-level sections, in this order:
+
+```
+# Current
+
+What the code actually does.
+
+# Target
+
+## One change per subsection
+
+What should be true instead, and why.
+```
+
+**Each `##` under `# Target` is one gap.** Write them so that is true -
+one change per subsection, with a title someone could act on. Anything
+that is not a change to make ("not changing", "already correct") belongs
+on the current side or after both sections, never under Target.
+
+**The target side is a switch, not a consequence of ownership.** It is set
+per repo and changeable at any time. Ownership only suggests the default,
+and never decides: proposing where a codebase should go is a perfectly
+good thing to do on a repo you do not own, whether to pitch the work or to
+argue for it.
+
+| Switch | Nodes |
+|---|---|
+| on | write both sides |
+| off | describe what is, and stop |
+
+**Ask once, at setup, and then leave it alone.** Do not raise it again per
+node.
+
+**Gaps are read, never stored.** `throughline gaps` recomputes them from
+the artifacts every time. There is no list to maintain and nothing to
+mark done.
+
+**Never promote a gap on your own initiative, and never promote several at
+once.** One real run produced a dozen gaps in an afternoon; turning those
+into tasks automatically is the backlog rule 1 forbids, arriving through
+another door. The user picks one, or none.
+
 ## Tasks
 
 A project pipeline answers what a system is. A **task** answers one thing
