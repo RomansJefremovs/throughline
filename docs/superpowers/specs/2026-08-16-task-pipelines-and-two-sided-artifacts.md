@@ -33,25 +33,38 @@ There are now two kinds of pipeline.
 Node definitions stay global and data-driven, so a second kind is mostly new
 data rather than new machinery.
 
-### 2. Two-sided artifacts
+### 2. Two-sided artifacts, and when the second side is skipped
 
-For an **existing** repo, every project-pipeline node records two sides:
+Which sides a node writes depends on one fact recorded at setup: **whose
+direction is this?**
 
-- **Current** — what is true today, derived from the code
-- **Target** — what should be true, decided in the interview
+| Repo | Sides written | Why |
+|---|---|---|
+| Owned, existing | Current **and** target | You decide where it goes |
+| Owned, new | Target only | There is no current state yet |
+| **Not owned** | **Current only** | The direction is not yours to set |
 
-For a **new** repo there is no current state, so nodes write the target side
-only and the artifact looks exactly as it does today.
+**The target side is skippable, and for client work it is skipped entirely.**
+On a repo like Geedie, where the work is fixing bugs and building features
+someone else specified, proposing a target state is not analysis — it is
+inventing opinions nobody asked for and nobody will act on. The artifact
+describes what is, and stops.
 
-**The gap between the two sides is the backlog.** It is computed from artifacts
-that already exist, not maintained as a separate list. This is the link between
-analysis and project management that the original spec left open.
+Skipping is per repo, decided at setup, and changeable later. A repo that starts
+as client work and becomes yours can turn the target side on.
+
+**Where both sides exist, the gap between them is the backlog.** It is computed
+from artifacts that already exist, not maintained as a separate list. This is
+the link between analysis and project management that the original spec left
+open — and it simply does not apply to repos you do not own.
 
 ### 3. Repo setup
 
 A lightweight one-time setup per repo, cheaper than the full project pipeline
 and sufficient on its own for task work. It records four things:
 
+- **Whose direction is this** — owned, or someone else's. Decides whether the
+  target side is written at all. Everything else in the tool follows from it.
 - **What this is** — one paragraph
 - **Vocabulary** — the mini glossary, the highest-value part
 - **How to run it** — launch, test and verify commands
@@ -106,14 +119,21 @@ and slug so the list sorts chronologically without a database.
 For a repo with no project pipeline, `docs/project/` holds only `setup.md`,
 `glossary.md` and `tasks/`.
 
-### Tasks from gaps
+### Where tasks come from
 
-A gap recorded on the target side of any project node can be promoted to a task.
-The task inherits the artifact it came from as context, so "Understand" is
-already answered and the flow starts at "Analyze".
+**Owned repos:** a gap recorded on the target side of any project node can be
+promoted to a task. The task inherits the artifact it came from as context, so
+"Understand" is already answered and the flow starts at "Analyze".
 
 Promotion is always explicit. Gaps never become tasks automatically — that would
 produce exactly the backlog-shaped list of undone work the original spec forbids.
+
+**Repos you do not own:** there are no gaps, because there is no target side.
+Tasks come from outside — a ticket, a message, a request — which is why setup
+records what the repo is wired to. On a repo with a Trello MCP, "Understand"
+pulls the ticket rather than asking for a paste.
+
+This is the common case, not the fallback. Most task work is client work.
 
 ## Status and the one next action
 
