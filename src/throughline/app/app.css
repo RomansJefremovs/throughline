@@ -1,0 +1,171 @@
+:root {
+  --bg: #faf9f7;
+  --panel: #ffffff;
+  --line: #e5e2dc;
+  --ink: #1f1e1c;
+  --muted: #6f6c66;
+  --accent: #1d6f56;
+  --radius: 8px;
+  --font: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171917;
+    --panel: #1f221f;
+    --line: #32362f;
+    --ink: #ece9e2;
+    --muted: #9a978f;
+    --accent: #5dcaa5;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* The project rail. Names and progress only - never a next action per
+   project, because five projects each showing what you owe is the list
+   the product exists not to show. */
+#rail {
+  width: 210px;
+  flex: 0 0 210px;
+  border-right: 1px solid var(--line);
+  padding: 18px 0;
+  background: var(--panel);
+}
+
+.rail-head {
+  padding: 0 18px 10px;
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.project {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 18px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project:hover { background: var(--bg); }
+.project[aria-current="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+.project .bar { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; letter-spacing: .12em; }
+.project.missing { color: var(--muted); font-style: italic; }
+
+#main { flex: 1; padding: 28px 34px 60px; max-width: 900px; }
+
+h1 { font-size: 22px; font-weight: 500; margin: 0; }
+
+#note { color: var(--muted); margin: 6px 0 16px; }
+
+#next-action {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--panel);
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+
+#next-action:hover { filter: brightness(1.08); }
+
+/* The map. Phases are columns; a node is a card. */
+#graph { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-top: 26px; }
+
+.phase-title {
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.node {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.node:hover { border-color: var(--accent); }
+.node .state { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.node.empty { opacity: .55; }
+.node.drafted { border-style: dashed; }
+.node.next { border-color: var(--accent); }
+
+.artifact-head { display: flex; gap: 8px; margin-bottom: 18px; }
+
+.artifact-head button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+
+.artifact-head button:hover { border-color: var(--accent); }
+
+#rendered h1 { font-size: 22px; margin: 24px 0 8px; }
+#rendered h2 { font-size: 18px; font-weight: 500; margin: 26px 0 8px; }
+#rendered h3 { font-size: 16px; font-weight: 500; margin: 20px 0 6px; }
+#rendered blockquote { margin: 0 0 20px; padding-left: 14px; border-left: 2px solid var(--accent); color: var(--muted); }
+#rendered table { border-collapse: collapse; margin: 16px 0; width: 100%; }
+#rendered th, #rendered td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+#rendered th { background: var(--panel); font-weight: 500; }
+#rendered pre { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; overflow-x: auto; }
+#rendered code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
+/* Before mermaid runs this is the raw source, and it stays that way if a
+   diagram will not parse. Readable either way. */
+#rendered pre.mermaid {
+  background: none;
+  border: 0;
+  padding: 12px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#rendered pre.mermaid svg { max-width: 100%; height: auto; }
+#rendered pre.mermaid[data-processed] { font-size: 0; }
+
+#source {
+  width: 100%;
+  min-height: 60vh;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  resize: vertical;
+}

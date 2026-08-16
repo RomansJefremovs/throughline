@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from throughline import state
 
@@ -91,6 +92,46 @@ def test_record_answer_stamps_updated(tmp_path):
     state.init(tmp_path, "demo", {})
     result = state.record_answer(tmp_path, "problem-statement", "q1", "x")
     assert result.nodes["problem-statement"].updated.endswith("Z")
+
+
+def test_drafted_is_a_status(tmp_path):
+    assert state.DRAFTED == "drafted"
+
+
+def test_node_state_has_no_confirmed_flag(tmp_path):
+    assert not hasattr(state.NodeState(), "confirmed")
+
+
+def test_load_migrates_an_unconfirmed_current_node_to_drafted(tmp_path):
+    state.init(tmp_path, "demo", {})
+    path = state.state_path(tmp_path)
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["nodes"]["problem-statement"] = {"status": "current", "confirmed": False}
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    assert state.load(tmp_path).nodes["problem-statement"].status == state.DRAFTED
+
+
+def test_load_leaves_a_confirmed_current_node_alone(tmp_path):
+    state.init(tmp_path, "demo", {})
+    path = state.state_path(tmp_path)
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["nodes"]["problem-statement"] = {"status": "current", "confirmed": True}
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    assert state.load(tmp_path).nodes["problem-statement"].status == state.CURRENT
+
+
+def test_record_answer_refreshes_the_left_off_note(tmp_path):
+    state.init(tmp_path, "demo", {})
+    state.record_answer(tmp_path, "problem-statement", "q1", "x")
+    assert "Problem statement" in state.load(tmp_path).last_note
+
+
+def test_record_answer_note_says_the_interview_is_partway_through(tmp_path):
+    state.init(tmp_path, "demo", {})
+    state.record_answer(tmp_path, "problem-statement", "q1", "x")
+    assert "mid-interview" in state.load(tmp_path).last_note.lower()
 
 
 def test_set_note_records_the_memory_jog(tmp_path):

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Throughline</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<aside id="rail">
+  <div class="rail-head">Projects</div>
+  <nav id="projects"></nav>
+</aside>
+
+<main id="main">
+  <header id="head">
+    <h1 id="project-name">Throughline</h1>
+    <p id="note"></p>
+    <button id="next-action" hidden></button>
+  </header>
+
+  <section id="graph"></section>
+
+  <section id="artifact" hidden>
+    <div class="artifact-head">
+      <button id="back">Back to the map</button>
+      <button id="edit">Edit</button>
+      <button id="save" hidden>Save</button>
+      <button id="cancel" hidden>Cancel</button>
+    </div>
+    <article id="rendered"></article>
+    <textarea id="source" hidden spellcheck="false"></textarea>
+  </section>
+
+  <p id="empty" hidden>No projects yet. Run <code>throughline init</code> in a repo, then add it.</p>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

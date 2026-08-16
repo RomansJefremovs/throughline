@@ -3,6 +3,18 @@ import pytest
 from throughline import artifacts
 
 
+def test_artifacts_are_written_with_lf_line_endings(tmp_path):
+    """One line ending everywhere, so an app edit is not a whole-file diff.
+
+    A browser textarea hands back LF whatever it was given. If artifacts
+    were written CRLF on Windows, the first save through the app would
+    rewrite every line of the file - a diff the user never made.
+    """
+    artifacts.write_artifact(tmp_path, "problem-statement", "A body.", "A summary.")
+    raw = artifacts.artifact_path(tmp_path, "problem-statement").read_bytes()
+    assert b"\r\n" not in raw
+
+
 def test_artifact_path_uses_the_node_filename(tmp_path):
     path = artifacts.artifact_path(tmp_path, "domain-model")
     assert path == tmp_path / "docs" / "project" / "glossary.md"

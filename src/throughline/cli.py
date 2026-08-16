@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
+from . import registry, serve
 from . import state as state_module
 from . import status as status_module
 
@@ -68,7 +69,6 @@ def cmd_nodes(args) -> int:
             "deps": list(node.deps),
             "renders": node.renders,
             "status": state_module.node_state(loaded, node.id).status,
-            "confirmed": state_module.node_state(loaded, node.id).confirmed,
         }
         for node in active
     ]
@@ -135,8 +135,7 @@ def cmd_write(args) -> int:
         repo, args.node, body, args.summary, slug=args.slug
     )
     entry = state_module.node_state(loaded, args.node)
-    entry.status = state_module.CURRENT
-    entry.confirmed = True
+    entry.status = state_module.DRAFTED if args.drafted else state_module.CURRENT
     entry.updated = state_module.utcnow()
     hashing.stamp(repo, args.node, loaded)
     loaded.last_node = args.node
@@ -157,6 +156,7 @@ def cmd_status(args) -> int:
         "where_you_left_off": result.where_you_left_off,
         "next": result.next_node,
         "next_title": result.next_title,
+        "answered": result.answered,
         "phases": [
             {"phase": p.phase, "filled": p.filled, "total": p.total}
             for p in result.phases
@@ -188,6 +188,66 @@ def cmd_stale(args) -> int:
         else f"{args.node} is up to date with its inputs"
     )
     _emit(payload, args.json, text)
+    return 0
+
+
+def cmd_confirm(args) -> int:
+    """Promote a drafted node to current.
+
+    Confirming is the moment a document stops being something Claude
+    wrote and becomes something its owner stands behind, so it refuses
+    when there is no artifact to have read.
+    """
+    repo = Path(args.repo)
+    loaded = _load(repo)
+    if loaded is None:
+        return 1
+    if not artifacts.artifact_path(repo, args.node).is_file():
+        print(f"no artifact written for {args.node}", file=sys.stderr)
+        return 1
+    entry = state_module.node_state(loaded, args.node)
+    entry.status = state_module.CURRENT
+    entry.updated = state_module.utcnow()
+    state_module.save(repo, loaded)
+    _emit({"node": args.node, "status": entry.status}, args.json, f"confirmed {args.node}")
+    return 0
+
+
+def cmd_add(args) -> int:
+    """Track a repo so the app can show it.
+
+    Refuses a folder with no pipeline: the registry is a list of projects,
+    and a folder that has never been initialised is not one yet.
+    """
+    repo = Path(args.repo).resolve()
+    if not state_module.exists(repo):
+        print(f"no pipeline in {repo} - run init there first", file=sys.stderr)
+        return 1
+    registry.add(repo)
+    _emit({"path": str(repo)}, args.json, f"tracking {repo}")
+    return 0
+
+
+def cmd_forget(args) -> int:
+    repo = Path(args.repo).resolve()
+    registry.remove(repo)
+    _emit({"path": str(repo)}, args.json, f"forgot {repo}")
+    return 0
+
+
+def cmd_projects(args) -> int:
+    payload = [registry.describe(repo) for repo in registry.projects()]
+    text = "\n".join(
+        f"{item['project'] or item['name']}"
+        + ("  (folder not found)" if item["missing"] else "")
+        for item in payload
+    )
+    _emit(payload, args.json, text or "nothing tracked yet")
+    return 0
+
+
+def cmd_serve(args) -> int:
+    serve.run(port=args.port)
     return 0
 
 
@@ -236,6 +296,10 @@ def build_parser() -> argparse.ArgumentParser:
     write.add_argument("--body-file")
     write.add_argument("--slug")
     write.add_argument("--note")
+    write.add_argument("--drafted", action="store_true")
+
+    confirm = add("confirm", cmd_confirm, "promote a drafted node to current")
+    confirm.add_argument("node")
 
     add("status", cmd_status, "where you left off and the one next node")
     add("next", cmd_next, "print the next node id")
@@ -244,6 +308,13 @@ def build_parser() -> argparse.ArgumentParser:
     stale.add_argument("node")
 
     add("scan", cmd_scan, "gather raw material from an existing repo")
+
+    add("add", cmd_add, "track this repo so the app can show it")
+    add("forget", cmd_forget, "stop tracking this repo")
+    add("projects", cmd_projects, "list tracked projects")
+
+    serve_cmd = add("serve", cmd_serve, "run the local app")
+    serve_cmd.add_argument("--port", type=int, default=7373)
     return parser
 
 

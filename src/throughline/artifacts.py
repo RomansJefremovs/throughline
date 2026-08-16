@@ -49,7 +49,10 @@ def write_artifact(
     path = artifact_path(repo, node_id, slug)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = f"# {node.title}\n\n> {summary.strip()}\n\n{body.strip()}\n"
-    path.write_text(text, encoding="utf-8")
+    # LF on every platform. A browser textarea hands back LF whatever it
+    # was given, so writing CRLF here would make the first save through
+    # the app rewrite every line - a diff the user never made.
+    path.write_bytes(text.encode("utf-8"))
     return path
 
 

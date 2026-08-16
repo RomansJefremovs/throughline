@@ -17,6 +17,7 @@ STATE_FILENAME = "pipeline.yaml"
 VERSION = 1
 
 EMPTY = "empty"
+DRAFTED = "drafted"
 IN_PROGRESS = "in_progress"
 CURRENT = "current"
 
@@ -28,7 +29,6 @@ def utcnow() -> str:
 @dataclass
 class NodeState:
     status: str = EMPTY
-    confirmed: bool = False
     answers: dict[str, str] = field(default_factory=dict)
     upstream_hashes: dict[str, str] = field(default_factory=dict)
     updated: str | None = None
@@ -84,7 +84,6 @@ def save(repo: Path, state: PipelineState) -> None:
         "nodes": {
             node_id: {
                 "status": entry.status,
-                "confirmed": entry.confirmed,
                 "answers": entry.answers,
                 "upstream_hashes": entry.upstream_hashes,
                 "updated": entry.updated,
@@ -98,6 +97,19 @@ def save(repo: Path, state: PipelineState) -> None:
         yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
+
+
+def _migrate_status(entry: dict) -> str:
+    """Read a node's status, upgrading the old confirmed boolean.
+
+    Files written before `drafted` existed encoded the same distinction as
+    status `current` with `confirmed: False` - a document Claude wrote and
+    nobody has read. That is exactly what drafted means.
+    """
+    status = entry.get("status", EMPTY)
+    if status == CURRENT and entry.get("confirmed") is False:
+        return DRAFTED
+    return status
 
 
 def load(repo: Path) -> PipelineState:
@@ -117,8 +129,7 @@ def load(repo: Path) -> PipelineState:
     for node_id, entry in (payload.get("nodes") or {}).items():
         entry = entry or {}
         result.nodes[node_id] = NodeState(
-            status=entry.get("status", EMPTY),
-            confirmed=bool(entry.get("confirmed", False)),
+            status=_migrate_status(entry),
             answers=entry.get("answers") or {},
             upstream_hashes=entry.get("upstream_hashes") or {},
             updated=entry.get("updated"),
@@ -130,6 +141,20 @@ def node_state(state: PipelineState, node_id: str) -> NodeState:
     if node_id not in state.nodes:
         state.nodes[node_id] = NodeState()
     return state.nodes[node_id]
+
+
+def _mid_interview_note(node_id: str, answered: int) -> str:
+    """The left-off line for a node that is partway through.
+
+    Written on every answer, so a session that dies mid-interview leaves
+    a note describing this node rather than the last one that finished.
+    """
+    try:
+        title = nodes_module.get_node(node_id).title
+    except KeyError:
+        title = node_id
+    word = "answer" if answered == 1 else "answers"
+    return f"Mid-interview on {title} - {answered} {word} saved."
 
 
 def record_answer(
@@ -150,6 +175,7 @@ def record_answer(
     if entry.status == EMPTY:
         entry.status = IN_PROGRESS
     state.last_node = node_id
+    state.last_note = _mid_interview_note(node_id, len(entry.answers))
     save(repo, state)
     return state
 

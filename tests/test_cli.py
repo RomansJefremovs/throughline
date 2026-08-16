@@ -87,8 +87,41 @@ def test_write_marks_the_node_current(tmp_path, capsys):
     assert code == 0
     loaded = state.load(tmp_path)
     assert loaded.nodes["problem-statement"].status == state.CURRENT
-    assert loaded.nodes["problem-statement"].confirmed is True
     assert loaded.last_note == "wrote the problem statement"
+
+
+def test_write_drafted_marks_the_node_drafted(tmp_path, capsys):
+    """A drafted node is written by Claude and read by nobody yet."""
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, _ = run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path),
+        "--summary", "A summary.",
+        "--body", "The body.",
+        "--drafted",
+    )
+    assert code == 0
+    assert state.load(tmp_path).nodes["problem-statement"].status == state.DRAFTED
+
+
+def test_confirm_promotes_a_drafted_node_to_current(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path),
+        "--summary", "A summary.",
+        "--body", "The body.",
+        "--drafted",
+    )
+    code, _ = run(capsys, "confirm", "problem-statement", "--repo", str(tmp_path))
+    assert code == 0
+    assert state.load(tmp_path).nodes["problem-statement"].status == state.CURRENT
+
+
+def test_confirm_refuses_a_node_with_no_artifact(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, _ = run(capsys, "confirm", "problem-statement", "--repo", str(tmp_path))
+    assert code == 1
 
 
 def test_write_accepts_a_body_file(tmp_path, capsys):
@@ -164,6 +197,55 @@ def test_status_names_the_next_node(tmp_path, capsys):
     code, out = run(capsys, "status", "--repo", str(tmp_path))
     assert code == 0
     assert "Problem statement" in out
+
+
+def test_status_json_carries_the_answers_already_given(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    run(capsys, "answer", "problem-statement", "q1", "x", "--repo", str(tmp_path))
+    code, out = run(capsys, "status", "--repo", str(tmp_path), "--json")
+    assert code == 0
+    assert json.loads(out)["answered"] == ["q1"]
+
+
+def test_add_tracks_a_repo_for_the_app(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, _ = run(capsys, "add", "--repo", str(tmp_path))
+    assert code == 0
+    from throughline import registry
+
+    assert registry.projects() == [tmp_path.resolve()]
+
+
+def test_add_refuses_a_repo_with_no_pipeline(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    code, _ = run(capsys, "add", "--repo", str(tmp_path))
+    assert code == 1
+
+
+def test_projects_lists_tracked_repos(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    run(capsys, "add", "--repo", str(tmp_path))
+    code, out = run(capsys, "projects", "--json")
+    assert code == 0
+    assert json.loads(out)[0]["project"] == "demo"
+
+
+def test_forget_stops_tracking_a_repo(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    run(capsys, "add", "--repo", str(tmp_path))
+    code, _ = run(capsys, "forget", "--repo", str(tmp_path))
+    assert code == 0
+    from throughline import registry
+
+    assert registry.projects() == []
+
+
+def test_serve_is_a_command_with_a_port(tmp_path):
+    args = cli.build_parser().parse_args(["serve", "--port", "9000"])
+    assert args.port == 9000
 
 
 def test_next_prints_only_the_node_id(tmp_path, capsys):

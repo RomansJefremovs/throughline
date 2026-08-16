@@ -18,6 +18,12 @@ dev = ["pytest>=8.0"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The app is served from inside the package, so its files have to ship
+# with it. Without this a non-editable install has a working CLI and a
+# `serve` command that 404s on every asset.
+[tool.setuptools.package-data]
+throughline = ["app/*", "app/vendor/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

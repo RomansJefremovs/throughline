@@ -8,7 +8,7 @@ count, a badge, or a warning.
 from dataclasses import dataclass, field
 
 from . import nodes as nodes_module
-from .state import CURRENT, EMPTY, IN_PROGRESS, PipelineState, node_state
+from .state import CURRENT, DRAFTED, EMPTY, IN_PROGRESS, PipelineState, node_state
 
 NO_NOTE = "Nothing yet - this is the first session."
 
@@ -26,6 +26,7 @@ class Status:
     where_you_left_off: str = NO_NOTE
     next_node: str | None = None
     next_title: str = ""
+    answered: list[str] = field(default_factory=list)
     phases: list[PhaseProgress] = field(default_factory=list)
 
 
@@ -38,21 +39,13 @@ def next_node(state: PipelineState) -> str | None:
     """One next node, in this priority order.
 
     An in-progress node comes first so an interrupted interview resumes.
-    Then an inferred-but-unconfirmed node, so bootstrap output gets
-    checked before anything is built on top of it. Then the first empty
-    node in pipeline order.
+    Then a drafted node, so what Claude wrote gets read before anything is
+    built on top of it. Then the first empty node in pipeline order.
     """
-    active = _active(state)
-    for node in active:
-        if node_state(state, node.id).status == IN_PROGRESS:
-            return node.id
-    for node in active:
-        entry = node_state(state, node.id)
-        if entry.status == CURRENT and not entry.confirmed:
-            return node.id
-    for node in active:
-        if node_state(state, node.id).status == EMPTY:
-            return node.id
+    for wanted in (IN_PROGRESS, DRAFTED, EMPTY):
+        for node in _active(state):
+            if node_state(state, node.id).status == wanted:
+                return node.id
     return None
 
 
@@ -77,6 +70,7 @@ def compute(state: PipelineState) -> Status:
         where_you_left_off=state.last_note or NO_NOTE,
         next_node=chosen,
         next_title=nodes_module.get_node(chosen).title if chosen else "",
+        answered=list(node_state(state, chosen).answers) if chosen else [],
         phases=progress(state),
     )
 
@@ -88,6 +82,9 @@ def render_text(status: Status) -> str:
     lines.append("")
     if status.next_node:
         lines.append(f"Next: {status.next_title}")
+        if status.answered:
+            already = ", ".join(status.answered)
+            lines.append(f"  already answered: {already}")
     else:
         lines.append("Nothing waiting. The pipeline is complete.")
     lines.append("")

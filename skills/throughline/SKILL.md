@@ -82,15 +82,36 @@ and `--json` when you need to parse the result.
 point at it. An artifact body is markdown full of brackets, pipes and
 newlines; passing that as a shell argument gets word-split before the CLI
 ever sees it. `--body` exists only for one-line bodies.
+- `throughline write <node> ... --drafted` - write it as a draft instead
+- `throughline confirm <node>` - promote a drafted node to current
 - `throughline stale <node>` - check one node against its inputs
 - `throughline scan` - raw material from an existing repo
+
+## The four node states
+
+| State | Means |
+|---|---|
+| `empty` | nothing yet |
+| `drafted` | **you wrote it from the scan. Nobody has read it** |
+| `in_progress` | mid-interview, answers saved, no artifact yet |
+| `current` | written, and confirmed by the person whose project it is |
+
+`drafted` is not a lesser `current`. A drafted node is your guess, and it
+stays your guess until the user has been through it. Never build on a
+drafted node without saying that is what you are doing.
 
 ## Starting a project
 
 For a new repo, run `throughline init` after the intake interview sets the
-flags. For an existing repo, run `throughline scan` first, draft every node
-from what comes back, then walk the user through confirming them - the
-interview becomes confirmation, not authoring.
+flags.
+
+For an existing repo, run `throughline scan` first, then write every node
+with `--drafted` from what comes back. Walk the user through them one at a
+time, and run `throughline confirm <node>` when they have been through one
+- the interview becomes confirmation, not authoring.
+
+**Never confirm a node on the user's behalf.** Confirming is the moment a
+document stops being yours and becomes theirs.
 
 Intake asks about six questions and must establish `has_db`, `has_ui`,
 `has_state` and `multi_service`. Finish intake by playing back your
@@ -116,3 +137,13 @@ says it fits. Do not proceed to any node before that playback is accepted.
 
 Run `throughline status`. Report the "where you left off" line first, then
 the single next node. Do not list anything else.
+
+**Check `answered` before asking anything.** `status --json` returns the
+question ids already saved for that node. If it is non-empty the node was
+interrupted partway through - read those answers out of `pipeline.yaml`,
+say in one line what is already settled, and continue at the next
+unanswered question.
+
+Never re-ask a question that has an answer. A session dying mid-node must
+cost the user nothing, and being asked the same thing twice is the most
+visible way to prove it did.
