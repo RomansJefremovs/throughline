@@ -17,8 +17,9 @@ These come from the design spec. Violating one breaks the tool for its user.
    one next action. Exactly one.
 2. **Never hand over a document to review.** Ask one question at a time.
    The artifact accretes from the answers.
-3. **Every question carries a recommendation** and a one-line reason.
-   "Yeah, that one" must always be a valid answer.
+3. **Every question goes through the interactive picker.** Use the
+   `AskUserQuestion` tool - never ask by writing options as prose. The
+   user picks; they do not compose. See "Asking a question" below.
 4. **Save every answer immediately** with `throughline answer`. Never
    batch answers to the end of an interview.
 5. **Never broadcast staleness.** No counts, no badges, no red. Mention a
@@ -26,8 +27,43 @@ These come from the design spec. Violating one breaks the tool for its user.
    sentence, with a one-word way to dismiss it.
 6. **Never load the whole repo.** Use `throughline context <node>` and
    work from what it returns.
-7. **Eight questions maximum per node.** If a node needs more, it should
-   have been split.
+7. **Four or five questions per node.** Eight is the hard ceiling, not the
+   target. If a node needs more, it should have been split.
+
+## Asking a question
+
+One `AskUserQuestion` call per question. Never batch several questions
+into one call - the point is that the user faces one decision at a time.
+
+- **2 to 4 options.** Fewer, sharper options beat a wide menu.
+- **The recommended option goes first**, labelled `(Recommended)`.
+- **Each option's description says what choosing it commits to** - the
+  consequence, not a restatement of the label.
+- **"Other" is automatic.** That is the write-it-yourself hatch; do not
+  add an option for it.
+- **Add "You decide" as an option** when the user could reasonably have
+  no opinion. Then pick, and say what you picked and why.
+- **The user can always say stop.** Do not spend an option slot on it.
+
+When the user's own answer is better than every option you offered, say
+so plainly and record theirs, not yours.
+
+## Question hygiene
+
+Learned from real runs. These are the failure modes:
+
+- **Never ask what the user cannot know from their own head.** Market
+  sizing, what competitors do, what users think. If the answer needs
+  research, either propose one from the scan and ask only for a yes, or
+  drop the question.
+- **Never ask what to exclude before anything has been decided.** A
+  delimitation question at the start of a node gets "I don't know", and
+  deserves to. Ask it last, or not at all.
+- **A question the code already answers is not a question.** Read the
+  code, state the finding, ask for a correction.
+- **Two options that differ only in wording are one option.** Cut one.
+- If the user answers "I don't know" twice in a node, the questions are
+  wrong. Stop asking, propose the rest, and let them correct.
 
 ## Commands
 
@@ -61,17 +97,15 @@ says it fits. Do not proceed to any node before that playback is accepted.
 1. `throughline context <node> --json` and read what comes back.
 2. Report in one line what you loaded and how many lines it was.
 3. Read the matching file in `questions/` if one exists. Otherwise derive
-   at most eight questions from the node's purpose.
-4. Ask one question at a time. Offer the options, mark one recommended,
-   give a one-line reason.
-5. Offer these three escape hatches on every question: you decide, let me
-   just write it, stop here.
-6. After each answer, run `throughline answer`.
-7. When the questions are done, write the artifact with
+   at most five questions from the node's purpose.
+4. Ask one question at a time through `AskUserQuestion`, following
+   "Asking a question" above.
+5. After each answer, run `throughline answer`.
+6. When the questions are done, write the artifact with
    `throughline write`, including a one-sentence summary and a `--note`
    describing what the user was thinking about. That note is what
    `status` shows next time.
-8. Render the diagram if the node's `renders` value is not `markdown`.
+7. Render the diagram if the node's `renders` value is not `markdown`.
 
 ## Resuming
 

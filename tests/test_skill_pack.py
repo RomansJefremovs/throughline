@@ -47,10 +47,26 @@ def test_core_question_banks_exist(node_id):
     assert (QUESTIONS / f"{node_id}.md").is_file()
 
 
-def test_question_banks_stay_within_the_size_limit():
+def test_skill_mandates_the_interactive_picker():
+    text = SKILL.read_text(encoding="utf-8")
+    assert "AskUserQuestion" in text, "the skill must require the interactive picker"
+    assert "prose" in text, "the skill must forbid asking with options written as prose"
+
+
+def test_skill_documents_question_hygiene():
+    text = SKILL.read_text(encoding="utf-8")
+    assert "## Question hygiene" in text
+
+
+def test_shipped_question_banks_model_the_target_length():
+    """The rule is four or five questions; eight is only the hard ceiling.
+
+    The banks that ship with the skill are the examples every derived
+    interview copies, so they hold to the target rather than the ceiling.
+    """
     for path in QUESTIONS.glob("*.md"):
         count = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("### Q"))
-        assert 1 <= count <= 8, f"{path.name} has {count} questions, limit is 8"
+        assert 1 <= count <= 5, f"{path.name} has {count} questions, target is 4-5"
 
 
 def test_every_question_offers_a_recommendation():
