@@ -1,0 +1,11 @@
+# LF in the repo and LF in the working tree, on every platform.
+#
+# This is not a style preference. A browser text area hands back LF
+# whatever it was given, and the app writes raw bytes. With Windows'
+# core.autocrlf=true, git would hand out CRLF files and the first save
+# through the app would rewrite every line - a whole-file diff nobody
+# made. The eol=lf here overrides that per repository.
+* text=auto eol=lf
+
+# Vendored bundle. Never touched, never diffed.
+src/throughline/app/vendor/mermaid.min.js binary
