@@ -1,0 +1,30 @@
+slug: 2026-08-16-wire-the-tauri-shell
+title: Wire the Tauri shell
+created: '2026-08-16T14:23:02Z'
+status: in_progress
+origin: gap
+reference: 'architecture: Tauri shell unbuilt'
+updated: '2026-08-16T14:24:39Z'
+nodes:
+  understand:
+    status: current
+    answers:
+      q1: Wrap the existing server in a Tauri window
+      q2: Rust toolchain is the blocker, not the app
+    upstream_hashes: {}
+    updated: '2026-08-16T14:24:39Z'
+  analyze:
+    status: empty
+    answers: {}
+    upstream_hashes: {}
+    updated: null
+  design:
+    status: empty
+    answers: {}
+    upstream_hashes: {}
+    updated: null
+  verify:
+    status: empty
+    answers: {}
+    upstream_hashes: {}
+    updated: null

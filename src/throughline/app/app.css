@@ -118,6 +118,28 @@ h1 { font-size: 22px; font-weight: 500; margin: 0; }
 .node.drafted { border-style: dashed; }
 .node.next { border-color: var(--accent); }
 
+#on-task { margin: -8px 0 14px; color: var(--accent); }
+
+#tasks-toggle {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+#tasks-toggle:hover { border-color: var(--accent); }
+
+#tasks { margin-top: 26px; max-width: 420px; }
+
+.task { margin-bottom: 22px; }
+.task-title { font-weight: 500; margin-bottom: 8px; }
+.task .task-title .state { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+.task.done, .task.abandoned { opacity: .5; }
+
 .artifact-head { display: flex; gap: 8px; margin-bottom: 18px; }
 
 .artifact-head button {

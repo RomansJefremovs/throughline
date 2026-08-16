@@ -96,6 +96,97 @@ def test_project_refuses_a_repo_that_is_not_tracked(tmp_path, monkeypatch):
     assert response.status == 403
 
 
+def test_project_names_the_live_task(tmp_path, monkeypatch):
+    from throughline import tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "Fix the metrics")
+    tasks.record_answer(repo, slug, "understand", "q1", "x")
+
+    payload = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert payload["task"] == slug
+    assert payload["next"] == "understand"
+
+
+def test_tasks_are_listed_only_when_asked_for(tmp_path, monkeypatch):
+    """The list exists and can be opened. It never arrives unrequested."""
+    from throughline import tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    tasks.create(repo, "Fix the metrics")
+
+    project = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert "tasks" not in project
+
+    listed = _json(serve.route("GET", "/api/tasks", {"repo": str(repo)}, b""))
+    assert listed[0]["title"] == "Fix the metrics"
+
+
+def test_a_task_artifact_is_read_by_slug(tmp_path, monkeypatch):
+    from throughline import tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "Fix it")
+    tasks.write(repo, slug, "understand", "The ticket says X.", "A summary.")
+
+    response = serve.route(
+        "GET",
+        "/api/artifact",
+        {"repo": str(repo), "slug": slug, "node": "understand"},
+        b"",
+    )
+    assert response.status == 200
+    assert "The ticket says X." in _json(response)["text"]
+
+
+def test_a_task_artifact_is_saved_by_slug(tmp_path, monkeypatch):
+    from throughline import tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "Fix it")
+    tasks.write(repo, slug, "understand", "Old.", "A summary.")
+    body = b"# Understand\n\n> A summary.\n\nEdited by hand.\n"
+
+    serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(repo), "slug": slug, "node": "understand"},
+        body,
+    )
+    assert tasks.artifact_path(repo, slug, "understand").read_bytes() == body
+
+
+def test_start_works_on_a_task_node(tmp_path, monkeypatch):
+    from throughline import tasks
+
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "Fix it")
+    calls = []
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append(p))
+
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "slug": slug, "node": "understand"},
+        b"",
+    )
+    assert response.status == 200
+    assert slug in calls[0]
+    assert "understand" in calls[0]
+
+
+def test_start_refuses_an_unknown_task(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "slug": "2026-01-01-nope", "node": "understand"},
+        b"",
+    )
+    assert response.status == 404
+
+
 def test_start_spawns_claude_in_the_repo(tmp_path, monkeypatch):
     """The one action the app exists to make cheap."""
     repo = _project(tmp_path, monkeypatch)

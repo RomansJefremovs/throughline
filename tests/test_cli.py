@@ -243,6 +243,78 @@ def test_forget_stops_tracking_a_repo(tmp_path, capsys, monkeypatch):
     assert registry.projects() == []
 
 
+def test_task_new_creates_a_task(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, out = run(
+        capsys, "task", "new", "Fix the metrics display",
+        "--repo", str(tmp_path), "--origin", "ticket", "--reference", "TRELLO-14",
+        "--json",
+    )
+    assert code == 0
+    from throughline import tasks
+
+    slug = json.loads(out)["slug"]
+    assert tasks.load(tmp_path, slug).reference == "TRELLO-14"
+
+
+def test_task_list_is_quiet_when_there_are_none(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, out = run(capsys, "task", "list", "--repo", str(tmp_path))
+    assert code == 0
+    assert "no tasks" in out.lower()
+
+
+def test_task_answer_then_write_advances_the_task(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _, out = run(capsys, "task", "new", "Fix it", "--repo", str(tmp_path), "--json")
+    slug = json.loads(out)["slug"]
+
+    run(capsys, "task", "answer", slug, "understand", "q1", "x", "--repo", str(tmp_path))
+    code, _ = run(
+        capsys, "task", "write", slug, "understand",
+        "--repo", str(tmp_path), "--summary", "A summary.", "--body", "The body.",
+    )
+    assert code == 0
+    code, out = run(capsys, "next", "--repo", str(tmp_path))
+    assert out.strip() == "analyze"
+
+
+def test_task_write_requires_a_body(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _, out = run(capsys, "task", "new", "Fix it", "--repo", str(tmp_path), "--json")
+    slug = json.loads(out)["slug"]
+    code, _ = run(
+        capsys, "task", "write", slug, "understand",
+        "--repo", str(tmp_path), "--summary", "A summary.",
+    )
+    assert code == 1
+
+
+def test_task_abandon_gives_the_slot_back(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _, out = run(capsys, "task", "new", "Fix it", "--repo", str(tmp_path), "--json")
+    slug = json.loads(out)["slug"]
+    run(capsys, "task", "answer", slug, "understand", "q1", "x", "--repo", str(tmp_path))
+    run(capsys, "task", "abandon", slug, "--repo", str(tmp_path))
+
+    code, out = run(capsys, "next", "--repo", str(tmp_path))
+    assert out.strip() == "problem-statement"
+
+
+def test_task_context_scopes_to_the_task(tmp_path, capsys):
+    """A task node reads its own upstream, not the whole project."""
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _, out = run(capsys, "task", "new", "Fix it", "--repo", str(tmp_path), "--json")
+    slug = json.loads(out)["slug"]
+    run(
+        capsys, "task", "write", slug, "understand",
+        "--repo", str(tmp_path), "--summary", "A summary.", "--body", "Ticket says X.",
+    )
+    code, out = run(capsys, "task", "context", slug, "analyze", "--repo", str(tmp_path))
+    assert code == 0
+    assert "Ticket says X." in out
+
+
 def test_serve_is_a_command_with_a_port(tmp_path):
     args = cli.build_parser().parse_args(["serve", "--port", "9000"])
     assert args.port == 9000

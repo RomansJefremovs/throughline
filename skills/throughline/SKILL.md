@@ -87,6 +87,52 @@ ever sees it. `--body` exists only for one-line bodies.
 - `throughline stale <node>` - check one node against its inputs
 - `throughline scan` - raw material from an existing repo
 
+### Task commands
+
+- `throughline task new "TITLE" --origin ticket --reference TRELLO-14` - start one
+- `throughline task list` - tasks, newest first
+- `throughline task answer <slug> <node> <question-id> <answer>` - persist one answer
+- `throughline task write <slug> <node> --summary S --body-file PATH` - write the artifact
+- `throughline task context <slug> <node>` - the scoped context for a task node
+- `throughline task abandon <slug>` - drop it without finishing
+- `throughline task reopen <slug>` - pick it back up
+
+## Tasks
+
+A project pipeline answers what a system is. A **task** answers one thing
+you are changing - a bug, a small feature, a ticket. Four nodes, about ten
+minutes, and no architecture questions.
+
+| Node | Produces |
+|---|---|
+| `understand` | what is being asked, in the user's own words |
+| `analyze` | what is actually happening, and why |
+| `design` | the change to make, and what it touches |
+| `verify` | how you will know it worked |
+
+**Use a task, not the project pipeline, whenever the work is a change
+rather than a system.** Running twelve nodes to fix a bug is how this tool
+goes unused for most real work.
+
+**Verify is the node that pays for the rest.** Rework is unbilled, so the
+proof is agreed before the fix is written. Never skip it because the fix
+looks obvious.
+
+**Start from the ticket, and fetch it yourself.** If the repo has an issue
+tracker or MCP server, pull the ticket and open `understand` with a
+playback of what you think was asked. Never ask the user to paste it. Keep
+the original wording in the artifact whatever they correct - it is what a
+later argument about scope is settled against.
+
+**A gap is promoted to a task only when the user says so.** Never create a
+task from a gap on your own initiative, and never create one per gap. One
+run on a real system produced a dozen gaps in an afternoon; promoting those
+automatically is the backlog rule 1 forbids, arriving by another door.
+
+**A task that is going nowhere gets abandoned, not left open.** Abandoning
+is reversible and costs nothing. An abandoned task stops competing for the
+one next-action slot, which is the only reason task status is stored.
+
 ## The four node states
 
 | State | Means |

@@ -212,9 +212,55 @@ function drawGraph(nodes) {
   });
 }
 
-async function showArtifact(node) {
-  const url = `/api/artifact?repo=${encodeURIComponent(current.path)}&node=${node.id}`;
+/* The task list is opened deliberately or not at all. Nothing renders it
+ * on load, and no count of it appears anywhere. */
+let openTask = null;
+
+const TASK_WORDS = {
+  open: "not started",
+  in_progress: "in progress",
+  done: "finished",
+  abandoned: "dropped",
+};
+
+async function showTasks() {
+  const list = await api(`/api/tasks?repo=${encodeURIComponent(current.path)}`);
+  const target = el("tasks");
+  target.innerHTML = "";
+  if (!list || !list.length) {
+    target.innerHTML = "<p>No tasks in this project yet.</p>";
+  }
+  (list || []).forEach((task) => {
+    const box = document.createElement("div");
+    box.className = "task " + task.status;
+    box.innerHTML =
+      `<div class="task-title">${esc(task.title)}` +
+      `<span class="state">${TASK_WORDS[task.status] || task.status}` +
+      `${task.reference ? " · " + esc(task.reference) : ""}</span></div>`;
+    task.nodes.forEach((node) => {
+      const button = document.createElement("button");
+      button.className =
+        "node " + node.status + (node.id === task.next ? " next" : "");
+      button.innerHTML = `${esc(node.title)}<span class="state">${
+        STATE_WORDS[node.status] || node.status
+      }</span>`;
+      button.onclick = () => showArtifact(node, task.slug);
+      box.appendChild(button);
+    });
+    target.appendChild(box);
+  });
+  el("graph").hidden = true;
+  el("artifact").hidden = true;
+  target.hidden = false;
+}
+
+async function showArtifact(node, slug = null) {
+  openTask = slug;
+  const query = new URLSearchParams({ repo: current.path, node: node.id });
+  if (slug) query.set("slug", slug);
+  const url = `/api/artifact?${query}`;
   const data = await api(url);
+  el("tasks").hidden = true;
   el("graph").hidden = true;
   el("artifact").hidden = false;
   el("source").value = data ? data.text : "";
@@ -239,7 +285,9 @@ function setEditing(on) {
 
 function showGraph() {
   el("artifact").hidden = true;
+  el("tasks").hidden = true;
   el("graph").hidden = false;
+  openTask = null;
 }
 
 async function open(path) {
@@ -248,6 +296,12 @@ async function open(path) {
   current = data;
   el("project-name").textContent = data.project || data.name;
   el("note").textContent = data.note || "";
+
+  /* A live task owns the next action. You finish what you started. */
+  const onTask = el("on-task");
+  onTask.hidden = !data.task;
+  onTask.textContent = data.task ? `On: ${data.task_title}` : "";
+
   const next = el("next-action");
   if (data.next) {
     next.hidden = false;
@@ -274,12 +328,13 @@ async function start() {
 
 /* The handoff. The sidecar spawns the session because a browser tab
  * cannot; under Tauri the same endpoint does the same thing. */
-async function startNode(nodeId, button) {
+async function startNode(nodeId, button, slug = null) {
   const label = button.textContent;
   button.disabled = true;
   button.textContent = "Opening Claude…";
-  const url = `/api/start?repo=${encodeURIComponent(current.path)}&node=${nodeId}`;
-  const response = await fetch(url, { method: "POST" });
+  const query = new URLSearchParams({ repo: current.path, node: nodeId });
+  if (slug) query.set("slug", slug);
+  const response = await fetch(`/api/start?${query}`, { method: "POST" });
   if (response.ok) {
     button.textContent = "Opened in Claude";
   } else {
@@ -296,15 +351,23 @@ el("back").onclick = showGraph;
 el("edit").onclick = () => setEditing(true);
 el("cancel").onclick = () => setEditing(false);
 
-el("next-action").onclick = (event) => startNode(current.next, event.currentTarget);
+el("next-action").onclick = (event) =>
+  startNode(current.next, event.currentTarget, current.task);
 
 el("work").onclick = (event) =>
-  startNode(el("artifact").dataset.node, event.currentTarget);
+  startNode(el("artifact").dataset.node, event.currentTarget, openTask);
+
+el("tasks-toggle").onclick = () =>
+  el("tasks").hidden ? showTasks() : showGraph();
 
 el("save").onclick = async () => {
   const node = el("artifact").dataset.node;
-  const url = `/api/artifact?repo=${encodeURIComponent(current.path)}&node=${node}`;
-  await fetch(url, { method: "PUT", body: el("source").value });
+  const query = new URLSearchParams({ repo: current.path, node });
+  if (openTask) query.set("slug", openTask);
+  await fetch(`/api/artifact?${query}`, {
+    method: "PUT",
+    body: el("source").value,
+  });
   setRendered(el("source").value);
   setEditing(false);
 };

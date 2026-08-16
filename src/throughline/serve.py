@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import registry
+from . import registry, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -98,17 +98,70 @@ def _get_project(query: dict) -> Response:
     return _json_response(payload)
 
 
+def _get_tasks(query: dict) -> Response:
+    """The task list, only ever on request.
+
+    Nothing else in the API returns it. A list of unfinished work that
+    arrives without being asked for is the pattern rule 1 forbids, and
+    the app must not be able to render one by accident.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    return _json_response(
+        [
+            {
+                "slug": task.slug,
+                "title": task.title,
+                "status": task.status,
+                "origin": task.origin,
+                "reference": task.reference,
+                "next": tasks.next_node(task),
+                "nodes": [
+                    {
+                        "id": node.id,
+                        "title": node.title,
+                        "status": task.nodes[node.id].status,
+                        "written": tasks.artifact_path(
+                            repo, task.slug, node.id
+                        ).is_file(),
+                    }
+                    for node in nodes_module.TASK_NODES
+                ],
+            }
+            for task in tasks.all_tasks(repo)
+        ]
+    )
+
+
+def _artifact_target(repo: Path, query: dict) -> tuple[Path | None, Response | None]:
+    """Where an artifact lives, project or task, from the same query."""
+    node = query.get("node")
+    if not node:
+        return None, _error(400, "node is required")
+    slug = query.get("slug")
+    if not slug:
+        return artifacts.artifact_path(repo, node), None
+    if not tasks.task_path(repo, slug).is_file():
+        return None, _error(404, "no such task")
+    try:
+        return tasks.artifact_path(repo, slug, node), None
+    except KeyError:
+        return None, _error(400, "no such task node")
+
+
 def _get_artifact(query: dict) -> Response:
     repo, failure = _tracked_repo(query)
     if failure is not None:
         return failure
-    node = query.get("node")
-    if not node:
-        return _error(400, "node is required")
-    path = artifacts.artifact_path(repo, node)
+    path, failure = _artifact_target(repo, query)
+    if failure is not None:
+        return failure
     if not path.is_file():
         return _error(404, "not written yet")
-    return _json_response({"node": node, "text": path.read_text(encoding="utf-8")})
+    return _json_response(
+        {"node": query.get("node"), "text": path.read_text(encoding="utf-8")}
+    )
 
 
 def _put_artifact(query: dict, body: bytes) -> Response:
@@ -124,13 +177,12 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     repo, failure = _tracked_repo(query)
     if failure is not None:
         return failure
-    node = query.get("node")
-    if not node:
-        return _error(400, "node is required")
-    path = artifacts.artifact_path(repo, node)
+    path, failure = _artifact_target(repo, query)
+    if failure is not None:
+        return failure
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(body)
-    return _json_response({"node": node, "saved": True})
+    return _json_response({"node": query.get("node"), "saved": True})
 
 
 def spawn_claude(repo: Path, prompt: str) -> None:
@@ -153,14 +205,27 @@ def _post_start(query: dict) -> Response:
     if failure is not None:
         return failure
     node_id = query.get("node") or ""
-    # The node id is checked against the graph, not sanitised. It reaches
-    # a process argument, and an allow-list is the only check that cannot
-    # be talked around.
-    try:
-        node = nodes_module.get_node(node_id)
-    except KeyError:
-        return _error(400, "no such node")
-    prompt = f"Use the throughline skill and work the {node.id} node."
+    slug = query.get("slug")
+    # Node ids and slugs are checked against the graph and the filesystem
+    # rather than sanitised. Both reach a process argument, and an
+    # allow-list is the only check that cannot be talked around.
+    if slug:
+        if not tasks.task_path(repo, slug).is_file():
+            return _error(404, "no such task")
+        try:
+            node = nodes_module.get_task_node(node_id)
+        except KeyError:
+            return _error(400, "no such node")
+        prompt = (
+            f"Use the throughline skill and work the {node.id} node "
+            f"of task {slug}."
+        )
+    else:
+        try:
+            node = nodes_module.get_node(node_id)
+        except KeyError:
+            return _error(400, "no such node")
+        prompt = f"Use the throughline skill and work the {node.id} node."
     try:
         spawn_claude(repo, prompt)
     except FileNotFoundError:
@@ -197,6 +262,8 @@ def route(method: str, path: str, query: dict, body: bytes) -> Response:
         return _get_projects()
     if method == "GET" and path == "/api/project":
         return _get_project(query)
+    if method == "GET" and path == "/api/tasks":
+        return _get_tasks(query)
     if method == "GET" and path == "/api/artifact":
         return _get_artifact(query)
     if method == "PUT" and path == "/api/artifact":

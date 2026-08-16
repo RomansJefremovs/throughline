@@ -28,6 +28,8 @@ class Status:
     next_title: str = ""
     answered: list[str] = field(default_factory=list)
     phases: list[PhaseProgress] = field(default_factory=list)
+    task_slug: str | None = None
+    task_title: str = ""
 
 
 def _active(state: PipelineState) -> tuple:
@@ -75,11 +77,44 @@ def compute(state: PipelineState) -> Status:
     )
 
 
+def for_repo(repo) -> Status:
+    """Status for a repo, tasks included.
+
+    The one next action is chosen in this order: a live task's next node,
+    then the project pipeline's, then nothing. You finish what you
+    started before you start something else.
+
+    A task that is done or abandoned is invisible here by construction -
+    which is the whole reason a task stores its status rather than
+    deriving it from its nodes.
+    """
+    from . import state as state_module
+    from . import tasks as tasks_module
+
+    result = compute(state_module.load(repo))
+    task = tasks_module.live_task(repo)
+    if task is None:
+        return result
+
+    node_id = tasks_module.next_node(task)
+    if node_id is None:
+        return result
+
+    result.task_slug = task.slug
+    result.task_title = task.title
+    result.next_node = node_id
+    result.next_title = nodes_module.get_task_node(node_id).title
+    result.answered = list(task.nodes[node_id].answers)
+    return result
+
+
 def render_text(status: Status) -> str:
     lines = [status.project or "(unnamed project)", ""]
     lines.append("Where you left off")
     lines.append(f"  {status.where_you_left_off}")
     lines.append("")
+    if status.task_slug:
+        lines.append(f"On: {status.task_title}")
     if status.next_node:
         lines.append(f"Next: {status.next_title}")
         if status.answered:

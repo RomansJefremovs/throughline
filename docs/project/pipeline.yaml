@@ -8,13 +8,10 @@ flags:
   multi_service: false
 on_demand: {}
 last_node: state-machine
-last_note: 'All eight nodes are written. The pipeline produced two real code changes:
-  a drafted state replacing the confirmed boolean, and the resume fix. Next: decide
-  what gets built first.'
+last_note: On task 'Wire the Tauri shell' - Understand.
 nodes:
   problem-statement:
     status: current
-    confirmed: true
     answers:
       q1: 'All three: a solo dev running several repos at once, a freelancer working
         in repos they do not own, and anyone returning to a project after time away.
@@ -42,7 +39,6 @@ nodes:
     updated: '2026-08-16T10:40:17Z'
   functional-requirements:
     status: current
-    confirmed: true
     answers:
       q1: 'Two actors. The developer answers questions, reads artifacts and edits
         them directly. Claude runs the interview, invokes the CLI and writes the artifacts.
@@ -91,7 +87,6 @@ nodes:
     updated: '2026-08-16T11:13:59Z'
   use-case-diagram:
     status: current
-    confirmed: true
     answers:
       q1: 'Seven use cases, confirmed at that grain. UC1 start tracking a repo; UC2
         work the next node; UC3 find where to work across projects; UC4 read the record;
@@ -140,7 +135,6 @@ nodes:
     updated: '2026-08-16T11:50:37Z'
   use-case-descriptions:
     status: current
-    confirmed: true
     answers:
       q1: 'Draft first, then confirm - but the draft is built from the bounded scan,
         not from reading the codebase. The user rejected the framing on token grounds:
@@ -186,7 +180,6 @@ nodes:
     updated: '2026-08-16T12:00:22Z'
   domain-model:
     status: current
-    confirmed: true
     answers:
       q1: 'Seven core entities, confirmed as the code already names them: Repo, Pipeline,
         Node, Artifact, Answer, Task, Gap. Phase and Flag were considered and left
@@ -217,7 +210,6 @@ nodes:
     updated: '2026-08-16T12:10:29Z'
   test-cases:
     status: current
-    confirmed: true
     answers:
       q1: 'Test both: one case per use case, proving the flow works, and one per hard
         rule, proving the tool stays honest. The rule tests are the unusual half and
@@ -251,7 +243,6 @@ nodes:
     updated: '2026-08-16T12:24:03Z'
   architecture:
     status: current
-    confirmed: true
     answers:
       q1: 'Delivery is a real desktop application built with Tauri - the user chose
         this over a local server opened in the browser. Consequences accepted: the
@@ -292,7 +283,6 @@ nodes:
     updated: '2026-08-16T12:43:38Z'
   state-machine:
     status: current
-    confirmed: true
     answers:
       q1: 'Four named states replace three statuses plus a confirmed boolean: empty,
         drafted, in progress, current. The boolean disappears into the status it was

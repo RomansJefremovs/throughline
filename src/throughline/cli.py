@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
-from . import registry, serve
+from . import registry, serve, tasks
 from . import state as state_module
 from . import status as status_module
 
@@ -150,13 +150,15 @@ def cmd_status(args) -> int:
     loaded = _load(Path(args.repo))
     if loaded is None:
         return 1
-    result = status_module.compute(loaded)
+    result = status_module.for_repo(Path(args.repo))
     payload = {
         "project": result.project,
         "where_you_left_off": result.where_you_left_off,
         "next": result.next_node,
         "next_title": result.next_title,
         "answered": result.answered,
+        "task": result.task_slug,
+        "task_title": result.task_title,
         "phases": [
             {"phase": p.phase, "filled": p.filled, "total": p.total}
             for p in result.phases
@@ -167,11 +169,12 @@ def cmd_status(args) -> int:
 
 
 def cmd_next(args) -> int:
-    loaded = _load(Path(args.repo))
-    if loaded is None:
+    repo = Path(args.repo)
+    if _load(repo) is None:
         return 1
-    chosen = status_module.next_node(loaded)
-    _emit({"next": chosen}, args.json, chosen or "")
+    result = status_module.for_repo(repo)
+    payload = {"next": result.next_node, "task": result.task_slug}
+    _emit(payload, args.json, result.next_node or "")
     return 0
 
 
@@ -210,6 +213,80 @@ def cmd_confirm(args) -> int:
     entry.updated = state_module.utcnow()
     state_module.save(repo, loaded)
     _emit({"node": args.node, "status": entry.status}, args.json, f"confirmed {args.node}")
+    return 0
+
+
+def cmd_task_new(args) -> int:
+    repo = Path(args.repo)
+    slug = tasks.create(repo, args.title, origin=args.origin, reference=args.reference)
+    _emit({"slug": slug, "title": args.title}, args.json, f"created {slug}")
+    return 0
+
+
+def cmd_task_list(args) -> int:
+    """The list exists and can be opened. It never greets anyone.
+
+    No count is printed, here or anywhere - three unfinished tasks read
+    the same as none until you deliberately look.
+    """
+    found = tasks.all_tasks(Path(args.repo))
+    payload = [
+        {
+            "slug": t.slug,
+            "title": t.title,
+            "status": t.status,
+            "origin": t.origin,
+            "reference": t.reference,
+            "next": tasks.next_node(t),
+        }
+        for t in found
+    ]
+    text = "\n".join(f"{t.status:<12} {t.title}  ({t.slug})" for t in found)
+    _emit(payload, args.json, text or "no tasks in this repo")
+    return 0
+
+
+def cmd_task_answer(args) -> int:
+    tasks.record_answer(Path(args.repo), args.slug, args.node, args.question, args.answer)
+    _emit({"saved": True}, args.json, "saved")
+    return 0
+
+
+def cmd_task_write(args) -> int:
+    body = _resolve_body(args)
+    if body is None:
+        return 1
+    path = tasks.write(Path(args.repo), args.slug, args.node, body, args.summary)
+    _emit({"path": str(path)}, args.json, f"wrote {path}")
+    return 0
+
+
+def cmd_task_context(args) -> int:
+    repo = Path(args.repo)
+    task = tasks.load(repo, args.slug)
+    node = nodes_module.get_task_node(args.node)
+    parts = [f"# Context for {node.title}", "", f"Task: {task.title}"]
+    if task.reference:
+        parts.append(f"Reference: {task.reference}")
+    parts.append("")
+    for dep in node.deps:
+        path = tasks.artifact_path(repo, args.slug, dep)
+        if path.is_file():
+            parts.append(path.read_text(encoding="utf-8"))
+    text = "\n".join(parts)
+    _emit({"node": node.id, "text": text}, args.json, text)
+    return 0
+
+
+def cmd_task_abandon(args) -> int:
+    tasks.abandon(Path(args.repo), args.slug)
+    _emit({"slug": args.slug, "status": tasks.ABANDONED}, args.json, "abandoned")
+    return 0
+
+
+def cmd_task_reopen(args) -> int:
+    task = tasks.reopen(Path(args.repo), args.slug)
+    _emit({"slug": args.slug, "status": task.status}, args.json, "reopened")
     return 0
 
 
@@ -315,6 +392,48 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve_cmd = add("serve", cmd_serve, "run the local app")
     serve_cmd.add_argument("--port", type=int, default=7373)
+
+    task = subparsers.add_parser("task", help="small units of work, four nodes each")
+    task_subs = task.add_subparsers(dest="task_command", required=True)
+
+    def add_task(name, handler, help_text):
+        sub = task_subs.add_parser(name, help=help_text)
+        sub.add_argument("--repo", default=".")
+        sub.add_argument("--json", action="store_true")
+        sub.set_defaults(handler=handler)
+        return sub
+
+    new = add_task("new", cmd_task_new, "start a task")
+    new.add_argument("title")
+    new.add_argument("--origin", default="ticket", choices=["ticket", "gap"])
+    new.add_argument("--reference", default="")
+
+    add_task("list", cmd_task_list, "list tasks, newest first")
+
+    t_answer = add_task("answer", cmd_task_answer, "persist one task answer")
+    t_answer.add_argument("slug")
+    t_answer.add_argument("node")
+    t_answer.add_argument("question")
+    t_answer.add_argument("answer")
+
+    t_write = add_task("write", cmd_task_write, "write a task node's artifact")
+    t_write.add_argument("slug")
+    t_write.add_argument("node")
+    t_write.add_argument("--summary", required=True)
+    t_write.add_argument("--body")
+    t_write.add_argument("--body-file")
+    t_write.add_argument("--note")
+
+    t_ctx = add_task("context", cmd_task_context, "the scoped context for a task node")
+    t_ctx.add_argument("slug")
+    t_ctx.add_argument("node")
+
+    t_abandon = add_task("abandon", cmd_task_abandon, "drop a task without finishing it")
+    t_abandon.add_argument("slug")
+
+    t_reopen = add_task("reopen", cmd_task_reopen, "pick an abandoned task back up")
+    t_reopen.add_argument("slug")
+
     return parser
 
 

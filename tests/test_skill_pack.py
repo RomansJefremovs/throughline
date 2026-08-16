@@ -38,8 +38,26 @@ def test_skill_forbids_broadcasting_staleness():
 
 def test_question_banks_name_real_nodes():
     known = {node.id for node in nodes.all_nodes()}
+    known |= {node.id for node in nodes.TASK_NODES}
     for path in QUESTIONS.glob("*.md"):
         assert path.stem in known, f"{path.name} does not match any node"
+
+
+@pytest.mark.parametrize("node_id", ["understand", "analyze", "design", "verify"])
+def test_every_task_node_has_a_question_bank(node_id):
+    """A task is ten minutes. There is no room to improvise the questions."""
+    assert (QUESTIONS / f"{node_id}.md").is_file()
+
+
+def test_skill_documents_the_task_commands():
+    text = SKILL.read_text(encoding="utf-8")
+    for command in ("task new", "task list", "task answer", "task write", "task abandon"):
+        assert f"throughline {command}" in text, f"{command} is undocumented"
+
+
+def test_skill_forbids_automatic_promotion():
+    text = SKILL.read_text(encoding="utf-8").lower()
+    assert "never" in text and "promot" in text
 
 
 @pytest.mark.parametrize("node_id", ["problem-statement", "functional-requirements", "domain-model"])

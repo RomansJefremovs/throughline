@@ -144,6 +144,52 @@ def get_node(node_id: str) -> NodeDef:
     return _BY_ID[node_id]
 
 
+# The task pipeline. A second kind, and deliberately just data - the
+# machinery that runs a project node runs these unchanged.
+#
+# Four nodes, in a line, because a task is small. Running twelve nodes to
+# fix a bug is how the tool goes unused for most real work.
+TASK_NODES: tuple[NodeDef, ...] = (
+    NodeDef(
+        id="understand",
+        title="Understand",
+        phase="task",
+        renders="markdown",
+        filename="01-understand.md",
+    ),
+    NodeDef(
+        id="analyze",
+        title="Analyze",
+        phase="task",
+        deps=("understand",),
+        renders="markdown",
+        filename="02-analyze.md",
+    ),
+    NodeDef(
+        id="design",
+        title="Design",
+        phase="task",
+        deps=("analyze",),
+        renders="markdown",
+        filename="03-design.md",
+    ),
+    NodeDef(
+        id="verify",
+        title="Verify",
+        phase="task",
+        deps=("design",),
+        renders="markdown",
+        filename="04-verify.md",
+    ),
+)
+
+_TASK_BY_ID = {node.id: node for node in TASK_NODES}
+
+
+def get_task_node(node_id: str) -> NodeDef:
+    return _TASK_BY_ID[node_id]
+
+
 def active_nodes(
     flags: dict[str, bool],
     on_demand: tuple[str, ...] = (),

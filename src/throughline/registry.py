@@ -90,14 +90,17 @@ def describe(repo: Path) -> dict:
         "next": None,
         "next_title": "",
         "note": "",
+        "task": None,
+        "task_title": "",
         "phases": [],
     }
     if result["missing"] or not state_module.exists(resolved):
         return result
 
-    loaded = state_module.load(resolved)
-    computed = status_module.compute(loaded)
+    computed = status_module.for_repo(resolved)
     result["tracked"] = True
+    result["task"] = computed.task_slug
+    result["task_title"] = computed.task_title
     result["project"] = computed.project
     result["next"] = computed.next_node
     result["next_title"] = computed.next_title

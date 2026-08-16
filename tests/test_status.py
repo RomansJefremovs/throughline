@@ -1,4 +1,63 @@
-from throughline import state, status
+from throughline import state, status, tasks
+
+
+def test_a_live_task_takes_the_next_action_slot(tmp_path):
+    """A task in flight beats the project pipeline. You finish what you started."""
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix the metrics")
+    tasks.record_answer(tmp_path, slug, "understand", "q1", "x")
+
+    result = status.for_repo(tmp_path)
+    assert result.task_slug == slug
+    assert result.next_node == "understand"
+    assert result.answered == ["q1"]
+
+
+def test_a_task_advances_once_a_node_is_written(tmp_path):
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix the metrics")
+    tasks.write(tmp_path, slug, "understand", "The body.", "A summary.")
+
+    result = status.for_repo(tmp_path)
+    assert result.next_node == "analyze"
+    assert result.next_title == "Analyze"
+
+
+def test_the_project_pipeline_resumes_when_no_task_is_live(tmp_path):
+    state.init(tmp_path, "demo", {})
+    result = status.for_repo(tmp_path)
+    assert result.task_slug is None
+    assert result.next_node == "problem-statement"
+
+
+def test_an_abandoned_task_gives_the_slot_back(tmp_path):
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix the metrics")
+    tasks.record_answer(tmp_path, slug, "understand", "q1", "x")
+    tasks.abandon(tmp_path, slug)
+
+    result = status.for_repo(tmp_path)
+    assert result.task_slug is None
+    assert result.next_node == "problem-statement"
+
+
+def test_status_never_counts_open_tasks(tmp_path):
+    """Rule 9. Three unfinished tasks must be as quiet as none."""
+    state.init(tmp_path, "demo", {})
+    for name in ("One", "Two", "Three"):
+        tasks.create(tmp_path, name)
+    text = status.render_text(status.for_repo(tmp_path))
+    assert "3" not in text
+    assert "task" not in text.lower().replace("tasks/", "")
+
+
+def test_the_task_is_named_in_the_rendered_status(tmp_path):
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix the metrics")
+    tasks.record_answer(tmp_path, slug, "understand", "q1", "x")
+    text = status.render_text(status.for_repo(tmp_path))
+    assert "Fix the metrics" in text
+    assert text.count("Next:") == 1
 
 
 def test_next_node_is_the_first_empty_node(tmp_path):
