@@ -38,6 +38,22 @@ and worth stating plainly:
 | Packaging and updates | Real work, and never finished |
 | Startup | A sidecar process must be spawned and waited for |
 
+## What the toolchain actually cost
+
+Built, so this is measured rather than estimated.
+
+| Step | Reality |
+|---|---|
+| `rustup` | One winget command, no admin |
+| MSVC C++ tools | Visual Studio was installed **without** them |
+| Windows SDK | `--includeRecommended` did **not** pull one; needed naming |
+| WebView2 | Already present |
+| First build | Under a minute once the toolchain was right |
+
+**Two admin prompts and roughly twelve minutes of installing**, almost all
+of it discovering that a Visual Studio install proves nothing about
+whether a C++ toolchain exists. The Rust code itself is ninety lines.
+
 **What does not change is the frontend.** Tauri hosts a webview either
 way, so the screens are the same work under either delivery. The choice
 buys a window and an icon; it does not change the app.
@@ -151,11 +167,16 @@ maintenance the product exists to avoid.
 
 # Where the app could go wrong
 
-| Risk | Why it matters |
-|---|---|
-| **Sidecar startup** | The window must not show an empty state while Python boots. Whatever it shows first, it must not look like data loss |
-| **Two writers on one file** | The app edits an artifact while a Claude session writes the same one. Last write wins, silently |
-| **Rust toolchain drift** | A build dependency you touch rarely is a build dependency that breaks when you need it |
+| Risk | Why it matters | State |
+|---|---|---|
+| **Sidecar startup** | The window must not show an empty state while Python boots | **Handled** — the window is not created until the sidecar reports its port |
+| **Sidecar missing** | Release builds have no console, so a failed start would close the window in silence | **Handled** — a window opens explaining why, with what to check |
+| **Port collision** | A stale server on a fixed port serves old code while the new one fails to bind | **Handled** — the sidecar binds port 0 and reports what it got |
+| **Two writers on one file** | The app edits an artifact while a Claude session writes the same one. Last write wins, silently | **Open** |
+| **Rust toolchain drift** | A build dependency you touch rarely breaks when you need it | **Open** |
 
-The second is the real one. A Claude session and an open editor are the
-normal case here, not an edge case.
+**Two writers is the real remaining one.** A Claude session and an open
+editor are the normal case here, not an edge case.
+
+The three that are handled were all handled because they had been paid for
+before, in hours, on another project.

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Throughline could not start</title>
+<link rel="stylesheet" href="/app.css">
+<style>
+  body { display: block; padding: 46px 40px; max-width: 640px; }
+  h1 { margin-bottom: 10px; }
+  p { color: var(--muted); }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px;
+    white-space: pre-wrap;
+    color: var(--ink);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 13px;
+  }
+  li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+  <h1>Throughline could not start</h1>
+  <p>The window opened, but the part that does the work did not.</p>
+
+  <pre id="reason">No reason was reported.</pre>
+
+  <p>Most likely one of these:</p>
+  <ul>
+    <li>The <code>throughline</code> command is not on your PATH.
+        Try running <code>throughline status</code> in a terminal.</li>
+    <li>The package was installed for a different Python than the one on PATH.</li>
+    <li>Something else is already using the port it was given.</li>
+  </ul>
+
+  <p>Nothing has been lost. Every project is plain markdown in its own
+     repository, and the command line works whether this window does or not.</p>
+
+<script>
+  if (window.__THROUGHLINE_ERROR__) {
+    document.getElementById("reason").textContent = window.__THROUGHLINE_ERROR__;
+  }
+</script>
+</body>
+</html>

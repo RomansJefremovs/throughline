@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Throughline",
+  "version": "0.1.0",
+  "identifier": "dev.throughline.desktop",
+  "build": {
+    "frontendDist": "../src/throughline/app"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "The thread through a project, from idea to code",
+    "longDescription": "Throughline keeps the problem, the analysis and the decisions as markdown inside the repository they describe. This window is a viewer and editor over the throughline command line, which does all the work."
+  }
+}

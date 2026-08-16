@@ -351,7 +351,20 @@ class Handler(BaseHTTPRequestHandler):
         """Quiet by default - the terminal is not the product."""
 
 
+def make_server(host: str = "127.0.0.1", port: int = 7373) -> ThreadingHTTPServer:
+    """Bind a server. Port 0 means "any free port, and tell me which".
+
+    The desktop shell uses that. A fixed port is how a stale server ends
+    up quietly serving old code while the new one fails to bind and its
+    window closes - which looks exactly like the app being broken.
+    """
+    return ThreadingHTTPServer((host, port), Handler)
+
+
 def run(host: str = "127.0.0.1", port: int = 7373) -> None:
-    server = ThreadingHTTPServer((host, port), Handler)
-    print(f"Throughline on http://{host}:{port}")
+    server = make_server(host, port)
+    actual = server.server_address[1]
+    # One line, flushed, so a parent process can read the port back
+    # before it makes the first request.
+    print(f"Throughline on http://{host}:{actual}", flush=True)
     server.serve_forever()

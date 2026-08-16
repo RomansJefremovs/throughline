@@ -16,6 +16,31 @@ def _json(response):
     return json.loads(response.body.decode("utf-8"))
 
 
+def test_port_zero_gets_a_real_port_from_the_operating_system():
+    """The desktop shell asks for any free port and is told which.
+
+    A fixed port is how a stale server ends up quietly serving old code
+    while the new one fails to bind and disappears.
+    """
+    server = serve.make_server("127.0.0.1", 0)
+    try:
+        assert server.server_address[1] != 0
+    finally:
+        server.server_close()
+
+
+def test_a_requested_port_is_honoured():
+    server = serve.make_server("127.0.0.1", 0)
+    chosen = server.server_address[1]
+    server.server_close()
+
+    again = serve.make_server("127.0.0.1", chosen)
+    try:
+        assert again.server_address[1] == chosen
+    finally:
+        again.server_close()
+
+
 def test_unknown_path_is_not_found(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
     assert serve.route("GET", "/nope", {}, b"").status == 404
