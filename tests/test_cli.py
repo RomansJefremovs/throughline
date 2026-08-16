@@ -91,6 +91,64 @@ def test_write_marks_the_node_current(tmp_path, capsys):
     assert loaded.last_note == "wrote the problem statement"
 
 
+def test_write_accepts_a_body_file(tmp_path, capsys):
+    """A markdown body cannot survive as a shell argument.
+
+    Real use hit this immediately: a body containing brackets and newlines
+    was word-split by the shell before argparse ever saw it.
+    """
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    source = tmp_path / "body.md"
+    source.write_text("# Heading\n\nflowchart LR\n  a[Node one] --> b[Node two]\n", encoding="utf-8")
+
+    code, _ = run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path),
+        "--summary", "s",
+        "--body-file", str(source),
+    )
+    assert code == 0
+    from throughline import artifacts
+
+    text = artifacts.read_artifact(tmp_path, "problem-statement")
+    assert "a[Node one] --> b[Node two]" in text
+
+
+def test_write_rejects_both_body_and_body_file(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    source = tmp_path / "body.md"
+    source.write_text("x", encoding="utf-8")
+
+    code, out = run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path),
+        "--summary", "s",
+        "--body", "inline",
+        "--body-file", str(source),
+    )
+    assert code == 1
+    assert "not both" in out
+
+
+def test_write_requires_one_of_body_or_body_file(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, out = run(capsys, "write", "problem-statement", "--repo", str(tmp_path), "--summary", "s")
+    assert code == 1
+    assert "--body" in out
+
+
+def test_write_reports_a_missing_body_file(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    code, out = run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path),
+        "--summary", "s",
+        "--body-file", str(tmp_path / "nope.md"),
+    )
+    assert code == 1
+    assert "no such file" in out.lower()
+
+
 def test_write_stamps_upstream_hashes(tmp_path, capsys):
     run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
     run(capsys, "write", "problem-statement", "--repo", str(tmp_path), "--summary", "s", "--body", "b")

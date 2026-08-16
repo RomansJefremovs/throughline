@@ -101,13 +101,38 @@ def cmd_answer(args) -> int:
     return 0
 
 
+def _resolve_body(args) -> str | None:
+    """The body comes from a file or the flag, never both.
+
+    An artifact body is a markdown document with brackets, pipes and
+    newlines in it. Shells word-split that before argparse sees it, so
+    --body-file is the path any real body should take.
+    """
+    if args.body is not None and args.body_file is not None:
+        print("pass --body or --body-file, not both")
+        return None
+    if args.body is not None:
+        return args.body
+    if args.body_file is None:
+        print("pass --body for a short body, or --body-file for a real one")
+        return None
+    source = Path(args.body_file)
+    if not source.is_file():
+        print(f"no such file: {source}")
+        return None
+    return source.read_text(encoding="utf-8")
+
+
 def cmd_write(args) -> int:
     repo = Path(args.repo)
+    body = _resolve_body(args)
+    if body is None:
+        return 1
     loaded = _load(repo)
     if loaded is None:
         return 1
     path = artifacts.write_artifact(
-        repo, args.node, args.body, args.summary, slug=args.slug
+        repo, args.node, body, args.summary, slug=args.slug
     )
     entry = state_module.node_state(loaded, args.node)
     entry.status = state_module.CURRENT
@@ -207,7 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
     write = add("write", cmd_write, "write a node's artifact and mark it current")
     write.add_argument("node")
     write.add_argument("--summary", required=True)
-    write.add_argument("--body", required=True)
+    write.add_argument("--body")
+    write.add_argument("--body-file")
     write.add_argument("--slug")
     write.add_argument("--note")
 

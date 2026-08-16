@@ -76,7 +76,12 @@ and `--json` when you need to parse the result.
 - `throughline next` - just the next node id
 - `throughline context <node>` - the scoped context for a node
 - `throughline answer <node> <question-id> <answer>` - persist one answer
-- `throughline write <node> --summary S --body B --note N` - write the artifact
+- `throughline write <node> --summary S --body-file PATH --note N` - write the artifact
+
+**Always use `--body-file`.** Write the body to a scratch file first, then
+point at it. An artifact body is markdown full of brackets, pipes and
+newlines; passing that as a shell argument gets word-split before the CLI
+ever sees it. `--body` exists only for one-line bodies.
 - `throughline stale <node>` - check one node against its inputs
 - `throughline scan` - raw material from an existing repo
 
