@@ -33,38 +33,47 @@ There are now two kinds of pipeline.
 Node definitions stay global and data-driven, so a second kind is mostly new
 data rather than new machinery.
 
-### 2. Two-sided artifacts, and when the second side is skipped
+### 2. Two-sided artifacts, with the second side optional
 
-Which sides a node writes depends on one fact recorded at setup: **whose
-direction is this?**
+Every project-pipeline node can record two sides:
 
-| Repo | Sides written | Why |
+- **Current** — what is true today, derived from the code
+- **Target** — what should be true, decided in the interview
+
+**The target side is a switch, set per repo and changeable at any time.** On, and
+every node writes both sides. Off, and nodes describe what is and stop.
+
+It is a choice, never a consequence. Nothing about a repo forbids defining a
+target for it — proposing improvements on a codebase you do not own is a
+perfectly good reason to turn it on, whether to pitch the work or to argue for
+it.
+
+Ownership only suggests the default:
+
+| Repo | Suggested default | Always overridable |
 |---|---|---|
-| Owned, existing | Current **and** target | You decide where it goes |
-| Owned, new | Target only | There is no current state yet |
-| **Not owned** | **Current only** | The direction is not yours to set |
+| Yours | on | yes |
+| Someone else's | off | yes |
+| New, nothing built | on, and there is no current side to write | yes |
 
-**The target side is skippable, and for client work it is skipped entirely.**
-On a repo like Geedie, where the work is fixing bugs and building features
-someone else specified, proposing a target state is not analysis — it is
-inventing opinions nobody asked for and nobody will act on. The artifact
-describes what is, and stops.
-
-Skipping is per repo, decided at setup, and changeable later. A repo that starts
-as client work and becomes yours can turn the target side on.
+The default exists so the common case needs no decision. On a client repo where
+the work is fixing what someone else specified, having the tool stay quiet about
+architecture is usually what you want — but if you do want to write down where
+it should go, nothing stops you.
 
 **Where both sides exist, the gap between them is the backlog.** It is computed
 from artifacts that already exist, not maintained as a separate list. This is
 the link between analysis and project management that the original spec left
-open — and it simply does not apply to repos you do not own.
+open. With the target side off there are simply no gaps to compute.
 
 ### 3. Repo setup
 
 A lightweight one-time setup per repo, cheaper than the full project pipeline
 and sufficient on its own for task work. It records four things:
 
-- **Whose direction is this** — owned, or someone else's. Decides whether the
-  target side is written at all. Everything else in the tool follows from it.
+- **Target side on or off** — whether nodes propose where this should go, or only
+  describe where it is. Asked once, changeable any time. Ownership suggests the
+  default and never more than that.
 - **What this is** — one paragraph
 - **Vocabulary** — the mini glossary, the highest-value part
 - **How to run it** — launch, test and verify commands
@@ -121,19 +130,18 @@ For a repo with no project pipeline, `docs/project/` holds only `setup.md`,
 
 ### Where tasks come from
 
-**Owned repos:** a gap recorded on the target side of any project node can be
-promoted to a task. The task inherits the artifact it came from as context, so
-"Understand" is already answered and the flow starts at "Analyze".
+**From outside — the common case.** A ticket, a message, a request. This is why
+setup records what the repo is wired to: on a repo with a Trello MCP,
+"Understand" pulls the ticket rather than asking for a paste. Most task work
+arrives this way, whoever owns the repo.
+
+**From a gap — where the target side is on.** A gap recorded on the target side
+of any project node can be promoted to a task. The task inherits the artifact it
+came from as context, so "Understand" is already answered and the flow starts at
+"Analyze".
 
 Promotion is always explicit. Gaps never become tasks automatically — that would
 produce exactly the backlog-shaped list of undone work the original spec forbids.
-
-**Repos you do not own:** there are no gaps, because there is no target side.
-Tasks come from outside — a ticket, a message, a request — which is why setup
-records what the repo is wired to. On a repo with a Trello MCP, "Understand"
-pulls the ticket rather than asking for a paste.
-
-This is the common case, not the fallback. Most task work is client work.
 
 ## Status and the one next action
 
