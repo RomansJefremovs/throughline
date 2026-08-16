@@ -60,6 +60,14 @@ def test_skill_forbids_automatic_promotion():
     assert "never" in text and "promot" in text
 
 
+def test_skill_forbids_forcing_over_a_hand_edit():
+    """--force exists for the user's decision, not for Claude's convenience."""
+    text = SKILL.read_text(encoding="utf-8")
+    assert "--force" in text
+    lowered = text.lower()
+    assert "never" in lowered and "edited since" in lowered
+
+
 def test_skill_documents_the_setup_commands():
     text = SKILL.read_text(encoding="utf-8")
     for command in ("detect", "setup"):

@@ -9,6 +9,7 @@ not already decide - if a rule appears in this file that is not in the
 CLI, it has been implemented twice and one copy will drift.
 """
 
+import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
@@ -196,6 +197,17 @@ def _artifact_target(repo: Path, query: dict) -> tuple[Path | None, Response | N
         return None, _error(400, "no such task node")
 
 
+def _version_of(path: Path) -> str:
+    """What the file looked like when it was handed out.
+
+    A hash rather than a timestamp: two writes inside the same second are
+    exactly the case this exists to catch.
+    """
+    if not path.is_file():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _get_artifact(query: dict) -> Response:
     repo, failure = _tracked_repo(query)
     if failure is not None:
@@ -206,7 +218,11 @@ def _get_artifact(query: dict) -> Response:
     if not path.is_file():
         return _error(404, "not written yet")
     return _json_response(
-        {"node": query.get("node"), "text": path.read_text(encoding="utf-8")}
+        {
+            "node": query.get("node"),
+            "text": path.read_text(encoding="utf-8"),
+            "version": _version_of(path),
+        }
     )
 
 
@@ -226,9 +242,27 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     path, failure = _artifact_target(repo, query)
     if failure is not None:
         return failure
+
+    # Two writers, and neither may silently win. The caller says which
+    # version it started from; if the file has moved on since, the save
+    # is refused and the newer text comes back so nothing is guessed at.
+    expected = query.get("version")
+    actual = _version_of(path)
+    if expected is not None and expected != actual:
+        return _json_response(
+            {
+                "error": "changed while you were editing",
+                "text": path.read_text(encoding="utf-8") if path.is_file() else "",
+                "version": actual,
+            },
+            409,
+        )
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(body)
-    return _json_response({"node": query.get("node"), "saved": True})
+    return _json_response(
+        {"node": query.get("node"), "saved": True, "version": _version_of(path)}
+    )
 
 
 def spawn_claude(repo: Path, prompt: str) -> None:

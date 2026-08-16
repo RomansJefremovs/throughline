@@ -386,6 +386,92 @@ def test_artifact_is_not_found_before_it_is_written(tmp_path, monkeypatch):
     assert response.status == 404
 
 
+def test_reading_an_artifact_returns_a_version(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "The body.", "A summary.")
+    payload = _json(
+        serve.route(
+            "GET", "/api/artifact", {"repo": str(repo), "node": "problem-statement"}, b""
+        )
+    )
+    assert payload["version"]
+
+
+def test_saving_with_a_stale_version_is_refused(tmp_path, monkeypatch):
+    """Two writers, and neither one silently wins.
+
+    The app loaded the artifact, a Claude session rewrote it, and the app
+    then saved. Without this the session's work vanishes with no sign.
+    """
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "Original.", "A summary.")
+    loaded = _json(
+        serve.route(
+            "GET", "/api/artifact", {"repo": str(repo), "node": "problem-statement"}, b""
+        )
+    )
+
+    artifacts.write_artifact(repo, "problem-statement", "Claude wrote this.", "S.")
+
+    response = serve.route(
+        "PUT",
+        "/api/artifact",
+        {
+            "repo": str(repo),
+            "node": "problem-statement",
+            "version": loaded["version"],
+        },
+        b"The app wrote this.\n",
+    )
+    assert response.status == 409
+    body = _json(response)
+    assert "Claude wrote this." in body["text"]
+    assert body["version"]
+
+
+def test_a_refused_save_leaves_the_file_untouched(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "Original.", "A summary.")
+    serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(repo), "node": "problem-statement", "version": "nonsense"},
+        b"clobbered\n",
+    )
+    on_disk = artifacts.artifact_path(repo, "problem-statement").read_text("utf-8")
+    assert "Original." in on_disk
+
+
+def test_saving_with_the_current_version_succeeds(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "Original.", "A summary.")
+    loaded = _json(
+        serve.route(
+            "GET", "/api/artifact", {"repo": str(repo), "node": "problem-statement"}, b""
+        )
+    )
+    response = serve.route(
+        "PUT",
+        "/api/artifact",
+        {
+            "repo": str(repo),
+            "node": "problem-statement",
+            "version": loaded["version"],
+        },
+        b"Edited by hand.\n",
+    )
+    assert response.status == 200
+    assert response.body and _json(response)["version"] != loaded["version"]
+
+
 def test_saving_an_artifact_writes_the_file_verbatim(tmp_path, monkeypatch):
     """Rule 10: the file is the truth, so an edit is stored as typed."""
     repo = _project(tmp_path, monkeypatch)

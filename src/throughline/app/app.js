@@ -318,6 +318,8 @@ async function showArtifact(node, slug = null) {
   if (slug) query.set("slug", slug);
   const url = `/api/artifact?${query}`;
   const data = await api(url);
+  loadedVersion = data ? data.version : null;
+  clearConflict();
   el("tasks").hidden = true;
   el("graph").hidden = true;
   el("artifact").hidden = false;
@@ -424,16 +426,71 @@ el("work").onclick = (event) =>
 el("tasks-toggle").onclick = () =>
   el("tasks").hidden ? showTasks() : showGraph();
 
-el("save").onclick = async () => {
+/* Two writers, and neither silently wins.
+ *
+ * The version is whatever the file looked like when it was loaded. If it
+ * has moved on, the save is refused and nothing typed is thrown away -
+ * the choice is put to the person who typed it. */
+let loadedVersion = null;
+let theirText = null;
+
+function showConflict(text) {
+  theirText = text;
+  el("conflict-text").textContent =
+    "This changed while you were editing — a Claude session, or another " +
+    "window, wrote it. Nothing you typed has been lost.";
+  el("conflict").hidden = false;
+}
+
+function clearConflict() {
+  el("conflict").hidden = true;
+  theirText = null;
+}
+
+async function saveArtifact(version) {
   const node = el("artifact").dataset.node;
   const query = new URLSearchParams({ repo: current.path, node });
   if (openTask) query.set("slug", openTask);
-  await fetch(`/api/artifact?${query}`, {
+  if (version) query.set("version", version);
+
+  const response = await fetch(`/api/artifact?${query}`, {
     method: "PUT",
     body: el("source").value,
   });
+
+  if (response.status === 409) {
+    const theirs = await response.json();
+    loadedVersion = theirs.version;
+    showConflict(theirs.text);
+    return false;
+  }
+
+  const saved = await response.json().catch(() => ({}));
+  loadedVersion = saved.version || null;
+  clearConflict();
+  return true;
+}
+
+el("keep-mine").onclick = async () => {
+  // Their version is now the one on disk, so saving against it replaces
+  // their text with this one - deliberately, and only on this click.
+  if (await saveArtifact(loadedVersion)) {
+    setRendered(el("source").value);
+    setEditing(false);
+  }
+};
+
+el("take-theirs").onclick = () => {
+  el("source").value = theirText || "";
   setRendered(el("source").value);
-  setEditing(false);
+  clearConflict();
+};
+
+el("save").onclick = async () => {
+  if (await saveArtifact(loadedVersion)) {
+    setRendered(el("source").value);
+    setEditing(false);
+  }
 };
 
 start();

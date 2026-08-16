@@ -5,6 +5,7 @@ skill markdown does the talking and shells out to these commands.
 """
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -134,6 +135,12 @@ def _resolve_body(args) -> str | None:
     return source.read_text(encoding="utf-8")
 
 
+def _artifact_hash(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def cmd_write(args) -> int:
     repo = Path(args.repo)
     body = _resolve_body(args)
@@ -142,12 +149,34 @@ def cmd_write(args) -> int:
     loaded = _load(repo)
     if loaded is None:
         return 1
+
+    path = artifacts.artifact_path(repo, args.node, args.slug)
+    entry = state_module.node_state(loaded, args.node)
+    on_disk = _artifact_hash(path)
+
+    # Rule 10 cuts both ways. If the file differs from what was last
+    # written here, a person has edited it since - in a text editor or in
+    # the app - and their words are the truth, not this body.
+    if (
+        not args.force
+        and entry.artifact_hash is not None
+        and on_disk is not None
+        and on_disk != entry.artifact_hash
+    ):
+        print(
+            f"{path.name} has been edited since it was last written here.\n"
+            "Read it before overwriting - or pass --force if you mean to "
+            "replace what is there.",
+            file=sys.stderr,
+        )
+        return 1
+
     path = artifacts.write_artifact(
         repo, args.node, body, args.summary, slug=args.slug
     )
-    entry = state_module.node_state(loaded, args.node)
     entry.status = state_module.DRAFTED if args.drafted else state_module.CURRENT
     entry.updated = state_module.utcnow()
+    entry.artifact_hash = _artifact_hash(path)
     hashing.stamp(repo, args.node, loaded)
     loaded.last_node = args.node
     if args.note:
@@ -321,7 +350,13 @@ def cmd_task_write(args) -> int:
     body = _resolve_body(args)
     if body is None:
         return 1
-    path = tasks.write(Path(args.repo), args.slug, args.node, body, args.summary)
+    try:
+        path = tasks.write(
+            Path(args.repo), args.slug, args.node, body, args.summary, force=args.force
+        )
+    except tasks.Edited as edited:
+        print(f"{edited} Pass --force if you mean to replace it.", file=sys.stderr)
+        return 1
     _emit({"path": str(path)}, args.json, f"wrote {path}")
     return 0
 
@@ -458,6 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     write.add_argument("--slug")
     write.add_argument("--note")
     write.add_argument("--drafted", action="store_true")
+    write.add_argument("--force", action="store_true")
 
     confirm = add("confirm", cmd_confirm, "promote a drafted node to current")
     confirm.add_argument("node")
@@ -507,6 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
     t_write.add_argument("--body")
     t_write.add_argument("--body-file")
     t_write.add_argument("--note")
+    t_write.add_argument("--force", action="store_true")
 
     t_ctx = add_task("context", cmd_task_context, "the scoped context for a task node")
     t_ctx.add_argument("slug")

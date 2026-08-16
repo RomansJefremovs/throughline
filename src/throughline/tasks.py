@@ -16,6 +16,7 @@ walked away from. Without it a dead task competes for the single
 next-action slot forever, and that slot is the product's core promise.
 """
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -114,6 +115,7 @@ def save(repo: Path, task: Task) -> None:
                 "answers": entry.answers,
                 "upstream_hashes": entry.upstream_hashes,
                 "updated": entry.updated,
+                "artifact_hash": entry.artifact_hash,
             }
             for node_id, entry in task.nodes.items()
         },
@@ -146,6 +148,7 @@ def load(repo: Path, slug: str) -> Task:
             answers=entry.get("answers") or {},
             upstream_hashes=entry.get("upstream_hashes") or {},
             updated=entry.get("updated"),
+            artifact_hash=entry.get("artifact_hash"),
         )
     return task
 
@@ -208,22 +211,52 @@ def record_answer(
     return task
 
 
+class Edited(Exception):
+    """The artifact changed since this tool last wrote it.
+
+    Someone edited it - in a text editor, or in the app - and their words
+    are the truth. Overwriting has to be a decision, not a side effect.
+    """
+
+
+def _hash_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def write(
     repo: Path,
     slug: str,
     node_id: str,
     body: str,
     summary: str,
+    force: bool = False,
 ) -> Path:
     node = nodes_module.get_task_node(node_id)
     task = load(repo, slug)
     path = artifact_path(repo, slug, node_id)
+    entry = task.nodes[node_id]
+
+    on_disk = _hash_file(path)
+    if (
+        not force
+        and entry.artifact_hash is not None
+        and on_disk is not None
+        and on_disk != entry.artifact_hash
+    ):
+        raise Edited(
+            f"{path.name} has been edited since it was last written here. "
+            "Read it before overwriting."
+        )
+
     path.parent.mkdir(parents=True, exist_ok=True)
     text = f"# {node.title}\n\n> {summary.strip()}\n\n{body.strip()}\n"
     path.write_bytes(text.encode("utf-8"))
 
-    task.nodes[node_id].status = "current"
-    task.nodes[node_id].updated = utcnow()
+    entry.status = "current"
+    entry.updated = utcnow()
+    entry.artifact_hash = _hash_file(path)
     _touch(repo, task, node_id)
     # Done is reached by finishing the work, never by declaring it.
     if next_node(task) is None:

@@ -178,6 +178,30 @@ h1 { font-size: 22px; font-weight: 500; margin: 0; }
 .task .task-title .state { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
 .task.done, .task.abandoned { opacity: .5; }
 
+/* One message, two choices, and neither of them loses your text. */
+#conflict {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: var(--panel);
+}
+
+#conflict p { margin: 0 0 12px; }
+
+#conflict button {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+#conflict button:hover { border-color: var(--accent); }
+
 .artifact-head { display: flex; gap: 8px; margin-bottom: 18px; }
 
 .artifact-head button {

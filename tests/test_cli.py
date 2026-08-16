@@ -270,6 +270,101 @@ def _body_file(tmp_path):
     return path
 
 
+def _write_node(capsys, tmp_path, body="The body."):
+    return run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path), "--summary", "A summary.", "--body", body,
+    )
+
+
+def test_writing_records_what_it_wrote(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path)
+    assert state.load(tmp_path).nodes["problem-statement"].artifact_hash
+
+
+def test_writing_twice_in_a_row_is_fine(tmp_path, capsys):
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path, "First.")
+    code, _ = _write_node(capsys, tmp_path, "Second.")
+    assert code == 0
+
+
+def test_writing_over_a_hand_edit_is_refused(tmp_path, capsys):
+    """Rule 10 cuts both ways. The user's own words are the truth too."""
+    from throughline import artifacts
+
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path, "What Claude wrote.")
+
+    path = artifacts.artifact_path(tmp_path, "problem-statement")
+    path.write_bytes(b"# Problem statement\n\n> S.\n\nWhat the user wrote.\n")
+
+    code, out = _write_node(capsys, tmp_path, "Claude writing again.")
+    assert code == 1
+    assert "What the user wrote." in path.read_text(encoding="utf-8")
+
+
+def test_a_refused_write_says_how_to_proceed(tmp_path, capsys):
+    """A refusal that does not say what to do next is just a wall."""
+    from throughline import artifacts
+
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path)
+    artifacts.artifact_path(tmp_path, "problem-statement").write_bytes(b"edited\n")
+
+    cli.main([
+        "write", "problem-statement",
+        "--repo", str(tmp_path), "--summary", "S.", "--body", "b",
+    ])
+    complaint = capsys.readouterr().err
+    assert "edited since" in complaint
+    assert "--force" in complaint
+
+
+def test_force_overwrites_a_hand_edit(tmp_path, capsys):
+    from throughline import artifacts
+
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path)
+    artifacts.artifact_path(tmp_path, "problem-statement").write_bytes(b"edited\n")
+
+    code, _ = run(
+        capsys, "write", "problem-statement",
+        "--repo", str(tmp_path), "--summary", "S.", "--body", "Claude insists.",
+        "--force",
+    )
+    assert code == 0
+    written = artifacts.artifact_path(tmp_path, "problem-statement").read_text("utf-8")
+    assert "Claude insists." in written
+
+
+def test_an_app_save_protects_the_text_too(tmp_path, capsys, monkeypatch):
+    """Editing in the app is the user writing, not the tool writing.
+
+    So it earns the same protection a Notepad edit gets: Claude cannot
+    overwrite it without being told to.
+    """
+    from throughline import artifacts, registry, serve
+
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    run(capsys, "init", "--repo", str(tmp_path), "--project", "demo")
+    _write_node(capsys, tmp_path)
+    registry.add(tmp_path)
+
+    serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(tmp_path), "node": "problem-statement"},
+        b"# Problem statement\n\n> S.\n\nEdited in the app.\n",
+    )
+
+    code, _ = _write_node(capsys, tmp_path, "Claude writing after an app save.")
+    assert code == 1
+    kept = artifacts.artifact_path(tmp_path, "problem-statement").read_text("utf-8")
+    assert "Edited in the app." in kept
+
+
 def test_init_can_make_a_repo_task_only(tmp_path, capsys):
     run(capsys, "init", "--repo", str(tmp_path), "--project", "geedie", "--task-only")
     assert state.load(tmp_path).task_only is True

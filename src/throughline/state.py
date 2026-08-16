@@ -32,6 +32,9 @@ class NodeState:
     answers: dict[str, str] = field(default_factory=dict)
     upstream_hashes: dict[str, str] = field(default_factory=dict)
     updated: str | None = None
+    # The artifact as Claude last wrote it. Anything else on disk means a
+    # human has been in there since, and their words win.
+    artifact_hash: str | None = None
 
 
 @dataclass
@@ -107,6 +110,7 @@ def save(repo: Path, state: PipelineState) -> None:
                 "answers": entry.answers,
                 "upstream_hashes": entry.upstream_hashes,
                 "updated": entry.updated,
+                "artifact_hash": entry.artifact_hash,
             }
             for node_id, entry in state.nodes.items()
         },
@@ -155,6 +159,7 @@ def load(repo: Path) -> PipelineState:
             answers=entry.get("answers") or {},
             upstream_hashes=entry.get("upstream_hashes") or {},
             updated=entry.get("updated"),
+            artifact_hash=entry.get("artifact_hash"),
         )
     return result
 

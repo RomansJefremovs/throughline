@@ -172,11 +172,36 @@ maintenance the product exists to avoid.
 | **Sidecar startup** | The window must not show an empty state while Python boots | **Handled** — the window is not created until the sidecar reports its port |
 | **Sidecar missing** | Release builds have no console, so a failed start would close the window in silence | **Handled** — a window opens explaining why, with what to check |
 | **Port collision** | A stale server on a fixed port serves old code while the new one fails to bind | **Handled** — the sidecar binds port 0 and reports what it got |
-| **Two writers on one file** | The app edits an artifact while a Claude session writes the same one. Last write wins, silently | **Open** |
+| **Two writers on one file** | The app edits an artifact while a Claude session writes the same one | **Handled** — see below |
 | **Rust toolchain drift** | A build dependency you touch rarely breaks when you need it | **Open** |
 
-**Two writers is the real remaining one.** A Claude session and an open
-editor are the normal case here, not an edge case.
+They were handled because each had been paid for before, in hours, on
+another project.
 
-The three that are handled were all handled because they had been paid for
-before, in hours, on another project.
+## Two writers, and neither one silently wins
+
+A Claude session and an open editor are the normal case here, not an edge
+case. Both directions lose work, and the second loses more.
+
+**The app saving over a Claude write.** Reading an artifact hands back a
+version - a hash of the bytes, not a timestamp, because two writes inside
+the same second are exactly the case this catches. Saving sends that
+version back. If the file has moved on, the save is **refused** and the
+newer text comes back with it.
+
+Nothing typed is discarded. The window says so, and offers two choices:
+
+| Choice | Effect |
+|---|---|
+| Keep what I wrote | Saves over theirs, deliberately |
+| Show me theirs instead | Replaces the editor with their text |
+
+**Claude writing over a hand edit.** The worse direction, because the
+words lost are the user's own. Each node records the artifact as Claude
+last wrote it; if the file differs, `write` **refuses** and says so.
+`--force` exists for the user's decision, and the skill forbids Claude
+from reaching for it unprompted.
+
+**Both guards are asymmetric on purpose.** A machine may not overwrite a
+person without being told to. A person may overwrite a machine with one
+click.

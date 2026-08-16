@@ -222,6 +222,24 @@ automatically is the backlog rule 1 forbids, arriving by another door.
 is reversible and costs nothing. An abandoned task stops competing for the
 one next-action slot, which is the only reason task status is stored.
 
+## When a write is refused
+
+`write` and `task write` refuse if the artifact has changed since this
+tool last wrote it. Someone edited it - in a text editor, or in the app -
+and their words are the truth.
+
+You will see: *"… has been edited since it was last written here."*
+
+When that happens:
+
+1. **Read the file.** Find out what they changed and why.
+2. **Say what you found**, in one or two sentences.
+3. **Ask** whether to keep their version, merge yours into it, or replace it.
+
+**Never pass `--force` on your own initiative.** It exists for the user's
+decision, not for your convenience. A refusal is the tool working - the
+alternative is their sentences disappearing with nothing said.
+
 ## The four node states
 
 | State | Means |

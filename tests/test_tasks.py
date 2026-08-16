@@ -135,6 +135,40 @@ def test_writing_a_node_puts_the_file_in_the_task_folder(tmp_path):
     assert "The body." in path.read_text(encoding="utf-8")
 
 
+def test_writing_a_task_node_over_a_hand_edit_is_refused(tmp_path):
+    """Same rule as a project artifact. The user's words are the truth."""
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix it")
+    tasks.write(tmp_path, slug, "understand", "What Claude wrote.", "S.")
+
+    path = tasks.artifact_path(tmp_path, slug, "understand")
+    path.write_bytes(b"# Understand\n\n> S.\n\nWhat the user wrote.\n")
+
+    with pytest.raises(tasks.Edited):
+        tasks.write(tmp_path, slug, "understand", "Claude again.", "S.")
+    assert "What the user wrote." in path.read_text(encoding="utf-8")
+
+
+def test_a_task_node_can_be_overwritten_deliberately(tmp_path):
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix it")
+    tasks.write(tmp_path, slug, "understand", "First.", "S.")
+    tasks.artifact_path(tmp_path, slug, "understand").write_bytes(b"edited\n")
+
+    tasks.write(tmp_path, slug, "understand", "Claude insists.", "S.", force=True)
+    written = tasks.artifact_path(tmp_path, slug, "understand").read_text("utf-8")
+    assert "Claude insists." in written
+
+
+def test_rewriting_a_task_node_it_wrote_is_fine(tmp_path):
+    state.init(tmp_path, "demo", {})
+    slug = tasks.create(tmp_path, "Fix it")
+    tasks.write(tmp_path, slug, "understand", "First.", "S.")
+    tasks.write(tmp_path, slug, "understand", "Second.", "S.")
+    written = tasks.artifact_path(tmp_path, slug, "understand").read_text("utf-8")
+    assert "Second." in written
+
+
 def test_finishing_verify_finishes_the_task(tmp_path):
     """Done is reached by doing the work, not by declaring it."""
     state.init(tmp_path, "demo", {})
