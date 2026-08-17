@@ -33,4 +33,16 @@ the interviews on top of this CLI.
 python -m pytest
 ```
 
+## Package
+
+Builds a Windows installer that carries its own Python, so the machine it
+installs on needs neither Python nor this repository. Requires Rust and
+Node on PATH.
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1
+```
+
+The installer lands in `desktop/target/release/bundle/nsis/`.
+
 Design notes are in `docs/superpowers/specs/`.

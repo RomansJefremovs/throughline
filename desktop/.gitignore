@@ -1,1 +1,5 @@
 target/
+
+# The frozen sidecar, produced by scripts/build-installer.ps1. A build
+# output rather than a source file, and nine megabytes of one.
+binaries/
