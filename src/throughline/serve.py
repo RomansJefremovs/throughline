@@ -167,6 +167,23 @@ def _get_projects() -> Response:
     return _json_response([registry.describe(repo) for repo in registry.projects()])
 
 
+def _get_flags() -> Response:
+    """Every flag, and the document it switches on.
+
+    Served rather than hardcoded in the app so the form cannot drift
+    from the pipeline definition, and so a flag that activates nothing
+    reports null instead of pretending to do something.
+    """
+    adds = {
+        node.flag: node.title
+        for node in nodes_module.NODES
+        if node.activation == nodes_module.FLAG and node.flag
+    }
+    return _json_response(
+        [{"name": name, "adds": adds.get(name)} for name in nodes_module.FLAGS]
+    )
+
+
 def _get_project(query: dict) -> Response:
     repo, failure = _tracked_repo(query)
     if failure is not None:
@@ -473,6 +490,8 @@ def route(
         return _get_home()
     if method == "GET" and path == "/api/projects":
         return _get_projects()
+    if method == "GET" and path == "/api/flags":
+        return _get_flags()
     if method == "GET" and path == "/api/project":
         return _get_project(query)
     if method == "GET" and path == "/api/setup":

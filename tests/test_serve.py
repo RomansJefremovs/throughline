@@ -2,7 +2,7 @@ import json
 import re
 from email.message import Message
 
-from throughline import registry, serve, state
+from throughline import nodes, registry, serve, state
 
 
 def _project(tmp_path, monkeypatch, name="Demo"):
@@ -874,3 +874,29 @@ def test_a_non_iterable_flags_value_is_refused(tmp_path, monkeypatch):
 def test_a_body_that_is_not_json_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
     assert serve.route("POST", "/api/init", {}, b"not json").status == 400
+
+
+def test_the_flags_are_served_with_what_each_one_adds(tmp_path, monkeypatch):
+    """The form must not keep its own copy of this list.
+
+    app.js already hardcodes PHASES, duplicating nodes.py. A second copy
+    of the same kind would drift the moment a flag is added or removed.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    payload = _json(serve.route("GET", "/api/flags", {}, b""))
+
+    assert [item["name"] for item in payload] == list(nodes.FLAGS)
+    by_name = {item["name"]: item["adds"] for item in payload}
+    assert by_name["has_db"] == "ER / relational model"
+    assert by_name["has_state"] == "State machine"
+
+
+def test_a_flag_that_switches_on_nothing_says_so(tmp_path, monkeypatch):
+    """has_ui is declared but no node declares it.
+
+    Until that is resolved the form must describe it honestly rather
+    than offer a checkbox that quietly does nothing.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    payload = _json(serve.route("GET", "/api/flags", {}, b""))
+    assert {"name": "has_ui", "adds": None} in payload
