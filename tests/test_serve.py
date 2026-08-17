@@ -1,5 +1,7 @@
+import http.client
 import json
 import re
+import threading
 from email.message import Message
 
 from throughline import nodes, registry, serve, state
@@ -900,3 +902,136 @@ def test_a_flag_that_switches_on_nothing_says_so(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
     payload = _json(serve.route("GET", "/api/flags", {}, b""))
     assert {"name": "has_ui", "adds": None} in payload
+
+
+def test_the_running_server_actually_enforces_the_origin_check():
+    """route() is not what ships - Handler._respond is.
+
+    Every Origin test above calls route() directly and hands it headers
+    by hand, so none of them would notice if Handler._respond stopped
+    passing self.headers through to route(). Delete that one argument
+    and every test above still passes while the guard goes dark in
+    production, because route()'s default `headers=None` reads as
+    "allowed". This binds a real socket and sends a real request, so
+    the wiring itself is what is under test, not just the function it
+    wires to.
+    """
+    server = serve.make_server("127.0.0.1", 0)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/api/promote",
+                body=b"",
+                headers={
+                    "Origin": "http://evil.example",
+                    "Host": f"127.0.0.1:{port}",
+                },
+            )
+            response = conn.getresponse()
+            response.read()
+            assert response.status == 403
+        finally:
+            conn.close()
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+
+def test_a_request_addressed_to_a_foreign_host_is_refused_on_a_get(
+    tmp_path, monkeypatch
+):
+    """DNS rebinding defeats the same-origin check alone.
+
+    A page served from evil.example, with a short DNS TTL, can flip its
+    own record to 127.0.0.1 after the browser has loaded it. From then
+    on the browser treats http://evil.example:PORT as same-origin with
+    the sidecar - Origin and Host both read evil.example:PORT, so
+    _origin_ok's "do Origin and Host agree" check is satisfied outright.
+    Same-origin also means the page can read the response, so a GET is
+    exactly as exposed as a POST once this works - the Host itself has
+    to be checked against loopback, on every method, not just writes.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    response = serve.route(
+        "GET", "/api/projects", {}, b"", {"Host": "evil.example:7373"}
+    )
+    assert response.status == 403
+
+
+def test_dns_rebinding_cannot_forge_a_same_origin_write(tmp_path, monkeypatch):
+    """The exact rebinding scenario: Origin and Host agree, both foreign.
+
+    Without a Host check, this passes _origin_ok's same-origin
+    comparison and reaches the route - the failure mode a same-origin
+    check alone cannot catch, because the attacker controls both
+    headers and can make them match each other perfectly.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    response = serve.route(
+        "POST",
+        "/api/promote",
+        {},
+        b"",
+        {"Origin": "http://evil.example:7373", "Host": "evil.example:7373"},
+    )
+    assert response.status == 403
+
+
+def test_loopback_hosts_are_allowed_in_every_spelling(tmp_path, monkeypatch):
+    """127.0.0.1, localhost, and the IPv6 literal are all this machine.
+
+    The IPv6 form arrives bracketed - "[::1]:7373" - so a plain
+    str.split(":") would cut it at the wrong colon; this is here so
+    that particular mistake fails loudly instead of quietly rejecting
+    every IPv6 loopback caller.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    for host in ("127.0.0.1:7373", "localhost:7373", "[::1]:7373"):
+        response = serve.route("GET", "/api/projects", {}, b"", {"Host": host})
+        assert response.status == 200
+
+
+def test_a_request_with_no_host_header_is_allowed(tmp_path, monkeypatch):
+    """Missing Host means a terminal client, not a browser.
+
+    Same reasoning as a missing Origin: real browsers always send Host,
+    so its absence is curl or the CLI, not a page that found the port.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
+    response = serve.route(
+        "GET", "/api/projects", {}, b"", {"X-Something": "value"}
+    )
+    assert response.status == 200
+
+
+def test_a_non_string_path_is_refused_rather_than_crashing(tmp_path, monkeypatch):
+    """The twin of the flags-scalar bug, in the same function.
+
+    A string is the wrong counter-test here, for the same reason as
+    with flags: any string is a valid argument to Path(), so it would
+    exercise a different branch entirely and pin nothing. `Path(raw)`
+    raises TypeError on a non-string, non-PathLike argument, and a
+    truthy JSON number is exactly what survives `if not raw` and
+    reaches Path() with no check in front of it.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    body = json.dumps({"path": 42, "project": "X"}).encode("utf-8")
+    response = serve.route("POST", "/api/init", {}, body)
+    assert response.status == 400
+
+
+def test_a_json_array_body_is_refused_rather_than_crashing(tmp_path, monkeypatch):
+    """The direct twin of the flags-list guard, one level up.
+
+    `[]` parses as valid JSON but is not a JSON object, so `.get(...)`
+    on it would raise AttributeError rather than answer a clean 400.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    response = serve.route("POST", "/api/init", {}, b"[]")
+    assert response.status == 400

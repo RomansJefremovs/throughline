@@ -60,7 +60,7 @@ def _tracked_repo(query: dict) -> tuple[Path | None, Response | None]:
     return resolved, None
 
 
-def _named_dir(raw: str | None) -> tuple[Path | None, Response | None]:
+def _named_dir(raw: object) -> tuple[Path | None, Response | None]:
     """Resolve a path the caller named, for the two endpoints that must
     accept one the registry has never heard of.
 
@@ -72,9 +72,17 @@ def _named_dir(raw: str | None) -> tuple[Path | None, Response | None]:
     A missing or non-directory path answers 400 rather than 404, so that
     404 keeps a single meaning for the caller - the folder is real and
     has no pipeline in it.
+
+    `raw` is untyped on purpose: one caller reads it out of the query
+    dict, where it is always a string, but the other reads it out of an
+    arbitrary JSON body, where a truthy non-string - a number, a float,
+    a bool - would otherwise sail past `if not raw` and crash `Path()`
+    with an unhandled TypeError instead of a 400.
     """
     if not raw:
         return None, _error(400, "path is required")
+    if not isinstance(raw, str):
+        return None, _error(400, "path must be a string")
     resolved = Path(raw).resolve()
     if not resolved.exists():
         return None, _error(400, "there is no folder at that path")
@@ -449,12 +457,49 @@ ASSET_TYPES = {
 }
 
 
+def _host_is_loopback(headers) -> bool:
+    """Whether the request is addressed to this machine at all.
+
+    DNS rebinding is the attack this closes: a page served from
+    evil.example, with a short TTL on its own record, loads normally
+    and then flips that record to 127.0.0.1. From then on the browser
+    treats http://evil.example:PORT as same-origin with the sidecar -
+    Origin and Host both read evil.example:PORT, so `_origin_ok`'s
+    "do Origin and Host agree" comparison is satisfied by an attacker
+    who controls both headers and can make them match each other.
+    Same-origin also means the page can read the response back, which
+    is what makes this check apply to every method rather than just
+    the writes `_origin_ok` guards - a GET stops being opaque the
+    moment it is same-origin with whoever asked for it.
+
+    The server binds loopback only, so nothing legitimate ever has a
+    Host outside `{127.0.0.1, localhost, ::1}` - anything else is
+    refused outright, method aside. A missing Host is allowed, for the
+    same reason a missing Origin is: real browsers always send one, so
+    its absence means a terminal client, not a page.
+    """
+    if not headers:
+        return True
+    lowered = {str(name).lower(): value for name, value in dict(headers).items()}
+    host = lowered.get("host")
+    if not host:
+        return True
+    # A bare split(":") would cut the IPv6 form ("[::1]:7373") in the
+    # wrong place; urlparse already knows how to strip the brackets.
+    hostname = urlparse(f"//{host}").hostname
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
 def _origin_ok(headers) -> bool:
     """Whether a write came from the app rather than from another page.
 
     The server has no authentication and its port is chosen at runtime,
     so there is no configured origin to compare against - the host the
     request was addressed to is the only thing both sides agree on.
+    That comparison alone is not enough against a page that can make
+    Origin and Host match each other by controlling both, which is why
+    `route` runs `_host_is_loopback` first - this function trusts that
+    Host already names this machine before it compares Origin to it.
 
     A missing Origin is allowed on purpose. Browsers always send one on
     a cross-origin write; terminals never send one at all, so curl and
@@ -481,6 +526,8 @@ def _origin_ok(headers) -> bool:
 def route(
     method: str, path: str, query: dict, body: bytes, headers=None
 ) -> Response:
+    if not _host_is_loopback(headers):
+        return _error(403, "request not addressed to this server")
     if method in ("POST", "PUT") and not _origin_ok(headers):
         return _error(403, "cross-origin request refused")
     if method == "GET" and path in ASSET_TYPES:
