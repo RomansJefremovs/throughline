@@ -126,6 +126,9 @@ def _post_init(body: bytes) -> Response:
         if name not in nodes_module.FLAGS:
             return _error(400, f"no such flag: {name}")
 
+    # Everything above is a refusal. This is the only line that touches
+    # disk, so it has to stay last - reorder a check above it and a bad
+    # request writes before being told no.
     state_module.init(
         repo,
         project,

@@ -848,6 +848,29 @@ def test_an_unknown_flag_is_refused(tmp_path, monkeypatch):
     assert not state.exists(repo)
 
 
+def test_a_non_iterable_flags_value_is_refused(tmp_path, monkeypatch):
+    """A number, not a string - a string would prove nothing here.
+
+    ``{"flags": "has_db"}`` is iterable, so without the isinstance
+    guard it would iterate characters and still land on a clean
+    ``400: no such flag: h`` - the same answer with or without the
+    guard, pinning nothing. A truthy, non-iterable JSON scalar like a
+    number, a float, or a bool is the only input that reaches the bare
+    `for name in asked` loop and raises `TypeError` instead, which
+    nothing between there and `Handler._respond` catches.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    body = json.dumps(
+        {"path": str(repo), "project": "Bare", "flags": 42}
+    ).encode("utf-8")
+
+    response = serve.route("POST", "/api/init", {}, body)
+    assert response.status == 400
+    assert not state.exists(repo)
+
+
 def test_a_body_that_is_not_json_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
     assert serve.route("POST", "/api/init", {}, b"not json").status == 400
