@@ -693,3 +693,63 @@ def test_saving_does_not_rewrite_line_endings(tmp_path, monkeypatch):
         body,
     )
     assert artifacts.artifact_path(repo, "problem-statement").read_bytes() == body
+
+
+def test_a_folder_with_a_pipeline_can_be_tracked_from_the_app(tmp_path, monkeypatch):
+    """The one thing the app could not do.
+
+    Every other endpoint refuses a repo the registry has not heard of,
+    which is exactly what a folder being added always is.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    state.init(repo, "Fresh", {})
+
+    response = serve.route("POST", "/api/add", {"path": str(repo)}, b"")
+    assert response.status == 200
+    assert repo.resolve() in registry.projects()
+
+
+def test_adding_a_folder_with_no_pipeline_is_refused(tmp_path, monkeypatch):
+    """404 here means one thing only, so the app can act on it.
+
+    A missing folder is a bad argument and answers 400. Only "there is
+    no pipeline in it" answers 404, which is what tells the app to
+    create one.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    bare = tmp_path / "bare"
+    bare.mkdir()
+
+    response = serve.route("POST", "/api/add", {"path": str(bare)}, b"")
+    assert response.status == 404
+    assert registry.projects() == []
+
+
+def test_adding_a_folder_that_is_not_there_is_a_bad_argument(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    response = serve.route(
+        "POST", "/api/add", {"path": str(tmp_path / "nope")}, b""
+    )
+    assert response.status == 400
+
+
+def test_adding_a_file_rather_than_a_folder_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    lonely = tmp_path / "notes.md"
+    lonely.write_text("hello", encoding="utf-8")
+    response = serve.route("POST", "/api/add", {"path": str(lonely)}, b"")
+    assert response.status == 400
+
+
+def test_adding_a_folder_twice_is_harmless(tmp_path, monkeypatch):
+    """registry.add already no-ops on a repeat. Say so in a test."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    state.init(repo, "Fresh", {})
+
+    serve.route("POST", "/api/add", {"path": str(repo)}, b"")
+    serve.route("POST", "/api/add", {"path": str(repo)}, b"")
+    assert registry.projects() == [repo.resolve()]

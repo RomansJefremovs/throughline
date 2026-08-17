@@ -60,6 +60,40 @@ def _tracked_repo(query: dict) -> tuple[Path | None, Response | None]:
     return resolved, None
 
 
+def _named_dir(raw: str | None) -> tuple[Path | None, Response | None]:
+    """Resolve a path the caller named, for the two endpoints that must
+    accept one the registry has never heard of.
+
+    Onboarding a folder means naming one that is not tracked yet, so the
+    allow-list cannot apply. The bound instead is that the folder has to
+    be there already: state.save creates parent directories, so without
+    this a typo would conjure a whole tree into being at any path.
+
+    A missing or non-directory path answers 400 rather than 404, so that
+    404 keeps a single meaning for the caller - the folder is real and
+    has no pipeline in it.
+    """
+    if not raw:
+        return None, _error(400, "path is required")
+    resolved = Path(raw).resolve()
+    if not resolved.exists():
+        return None, _error(400, "there is no folder at that path")
+    if not resolved.is_dir():
+        return None, _error(400, "that is a file, not a folder")
+    return resolved, None
+
+
+def _post_add(query: dict) -> Response:
+    """Track a folder that already has a pipeline. Mirrors cmd_add."""
+    repo, failure = _named_dir(query.get("path"))
+    if failure is not None:
+        return failure
+    if not state_module.exists(repo):
+        return _error(404, "no pipeline in that folder")
+    registry.add(repo)
+    return _json_response({"path": str(repo)})
+
+
 def _nodes_payload(repo: Path) -> list[dict]:
     loaded = state_module.load(repo)
     active = nodes_module.active_nodes(loaded.flags, tuple(loaded.on_demand.keys()))
@@ -408,6 +442,8 @@ def route(
         return _get_artifact(query)
     if method == "PUT" and path == "/api/artifact":
         return _put_artifact(query, body)
+    if method == "POST" and path == "/api/add":
+        return _post_add(query)
     if method == "POST" and path == "/api/promote":
         return _post_promote(query)
     if method == "POST" and path == "/api/start":
