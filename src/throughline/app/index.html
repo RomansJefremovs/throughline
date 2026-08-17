@@ -51,6 +51,7 @@
       <p class="kicker" id="front-project"></p>
       <p class="reminder" id="front-reminder"></p>
       <button id="front-action" class="hero"></button>
+      <button id="front-add" class="hero" hidden>Add a project &rarr;</button>
       <p class="sub" id="front-sub"></p>
     </section>
 
@@ -110,6 +111,55 @@
       <h2>Tasks</h2>
       <p class="lede" id="tasks-lede"></p>
       <div id="task-rows"></div>
+    </section>
+
+    <section id="adding" class="screen prose" hidden>
+      <p class="kicker">Add a project</p>
+      <h2>Point Throughline at a folder</h2>
+
+      <div class="field">
+        <span class="lbl">Folder</span>
+        <div class="pick">
+          <input id="add-path" type="text" spellcheck="false"
+                 placeholder="C:\Dev\my-project">
+          <button id="add-browse" class="hollow" hidden>Browse&hellip;</button>
+        </div>
+      </div>
+
+      <fieldset id="add-new">
+        <legend>If this folder doesn't have a pipeline yet</legend>
+
+        <div class="field">
+          <span class="lbl">Name</span>
+          <input id="add-name" type="text" spellcheck="false">
+        </div>
+
+        <div class="field">
+          <span class="lbl">Kind</span>
+          <div class="choices">
+            <label><input type="radio" name="add-kind" value="full" checked>
+              Full pipeline</label>
+            <label><input type="radio" name="add-kind" value="task">
+              Task work only</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="lbl">Extras</span>
+          <div class="choices">
+            <div id="add-flags"></div>
+            <label><input id="add-target" type="checkbox">
+              Track a target side as well as current</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <div id="add-error" class="note edge" hidden></div>
+
+      <div class="row">
+        <button id="add-submit" class="solid">Add project</button>
+        <button id="add-cancel" class="hollow">Cancel</button>
+      </div>
     </section>
 
     <section id="failure" class="screen" hidden>

@@ -459,3 +459,47 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 
 .modal p { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 0 0 20px; }
 .modal .row button { flex: 1; }
+
+/* Adding a project -------------------------------------------------- */
+
+/* The label column is pinned to one width so "Folder", "Name", "Kind" and
+ * "Extras" line up down the form instead of each row's input starting
+ * wherever its own label happens to end. */
+.field { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; }
+.field .lbl { flex: none; width: 74px; font-size: 12px; color: var(--muted); }
+
+.field input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.field input[type="text"]:focus { border-color: var(--accent); }
+.pick { flex: 1; display: flex; gap: 8px; min-width: 0; }
+
+#add-new {
+  border: 1px solid var(--divider);
+  border-left: 3px solid var(--divider);
+  padding: 18px 20px 4px;
+  margin: 0 0 20px;
+}
+
+#add-new legend {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  padding: 0 8px;
+}
+
+.choices { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.choices label { display: flex; align-items: baseline; gap: 8px; }
+.choices .adds { color: var(--muted); }
+
+.sw-add { color: var(--accent-text); font-weight: 800; }
