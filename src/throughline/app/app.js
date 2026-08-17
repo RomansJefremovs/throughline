@@ -241,13 +241,15 @@ async function restore(state) {
   updateChevrons();
 }
 
-el("back").onclick = async () => {
+async function goBack() {
   if (!history.length) return;
   const here = snapshot();
   const previous = history.pop();
   future.unshift(here);
   await restore(previous);
-};
+}
+
+el("back").onclick = goBack;
 
 el("forward").onclick = async () => {
   if (!future.length) return;
@@ -550,7 +552,18 @@ el("take-theirs").onclick = () => {
 let flagList = null;
 
 async function drawFlags() {
-  if (!flagList) flagList = (await api("/api/flags")) || [];
+  if (!flagList) {
+    const fetched = await api("/api/flags");
+    // The cache is only ever filled with a real answer. Caching a
+    // failure - or caching [] and calling that done - would make one
+    // bad response permanent: every later openAdd() would draw an
+    // "Extras" box holding nothing, with no sign anything went wrong.
+    if (!fetched) {
+      addError("Could not load the available flags.");
+      return;
+    }
+    flagList = fetched;
+  }
   const box = el("add-flags");
   box.innerHTML = "";
   flagList.forEach((flag) => {
@@ -610,7 +623,7 @@ el("add-browse").onclick = async () => {
 };
 
 el("add-cancel").onclick = async () => {
-  if (history.length) await el("back").onclick();
+  if (history.length) await goBack();
   else show("front");
 };
 
@@ -625,7 +638,7 @@ async function said(response) {
  * compose: add writes nothing, so a mistyped path is turned away before
  * anything can be created. 404 from add means one thing only - the
  * folder is real and has no pipeline in it. */
-el("add-submit").onclick = async () => {
+async function submitAdd() {
   const path = el("add-path").value.trim();
   if (!path) return addError("Type or choose a folder.");
 
@@ -661,13 +674,23 @@ el("add-submit").onclick = async () => {
     if (!response.ok) return addError(await said(response));
 
     const added = await response.json();
+    // The project was genuinely created either way, so the switcher
+    // and front door must learn about it regardless of what the user
+    // did while this was in flight. Only the navigation is conditional:
+    // nothing but the submit button is disabled during the request, so
+    // Cancel (or the switcher) can move the screen on before this
+    // resolves - and jumping back to "adding" then would yank the user
+    // off wherever they went next for a request they no longer care
+    // about.
     projects = (await api("/api/projects")) || [];
-    await openProject(added.path);
+    if (current() === "adding") await openProject(added.path);
   } finally {
     button.disabled = false;
     button.textContent = label;
   }
-};
+}
+
+el("add-submit").onclick = submitAdd;
 
 /* Tasks ----------------------------------------------------------- */
 
