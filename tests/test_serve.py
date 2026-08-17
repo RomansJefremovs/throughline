@@ -1,5 +1,6 @@
 import json
 import re
+from email.message import Message
 
 from throughline import registry, serve, state
 
@@ -140,6 +141,41 @@ def test_header_case_does_not_decide_the_origin_check():
         b"",
         {"origin": "http://evil.example", "host": "127.0.0.1:7373"},
     )
+    assert response.status == 403
+
+
+def test_an_opaque_origin_is_refused():
+    """`null` is what a sandboxed iframe or a data: URL sends as Origin.
+
+    It is refused today because it parses to an empty netloc, which
+    never matches a real Host - but that is easy to lose. "An opaque
+    origin is like no origin, so let it through" is a plausible-sounding
+    edit, and every other test in this file would still pass if someone
+    made it. This one exists so that edit fails instead.
+    """
+    response = serve.route(
+        "POST",
+        "/api/promote",
+        {},
+        b"",
+        {"Origin": "null", "Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 403
+
+
+def test_a_real_http_message_is_refused_like_any_other_mapping():
+    """Handler hands `_origin_ok` an email.message.Message, not a dict.
+
+    Every other test in this file passes a plain dict, which would
+    still pass if `_origin_ok` were rewritten to call `headers.get`
+    directly - a dict supports that. A Message does too, but not the
+    same way for a repeated header, so this pins the actual type the
+    HTTP layer hands over rather than a stand-in for it.
+    """
+    headers = Message()
+    headers.add_header("Origin", "http://evil.example")
+    headers.add_header("Host", "127.0.0.1:7373")
+    response = serve.route("POST", "/api/promote", {}, b"", headers)
     assert response.status == 403
 
 

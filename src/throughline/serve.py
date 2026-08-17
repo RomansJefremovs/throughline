@@ -354,16 +354,24 @@ ASSET_TYPES = {
 
 
 def _origin_ok(headers) -> bool:
-    """Whether a POST came from the app rather than from another page.
+    """Whether a write came from the app rather than from another page.
 
     The server has no authentication and its port is chosen at runtime,
     so there is no configured origin to compare against - the host the
     request was addressed to is the only thing both sides agree on.
 
     A missing Origin is allowed on purpose. Browsers always send one on
-    a cross-origin POST; terminals never send one at all, so curl and
-    the CLI are untouched. GETs are left alone: they change nothing, and
-    a cross-origin GET cannot read its own response.
+    a cross-origin write; terminals never send one at all, so curl and
+    the CLI are untouched. Only POST and PUT are checked, because those
+    are the methods that write a file or start a process - a GET
+    changes nothing, and its response is opaque to whatever page
+    triggered it, so there is nothing for a forged cross-origin GET to
+    gain.
+
+    `headers` is a plain mapping in the tests, or the
+    `email.message.Message` (`http.client.HTTPMessage`) that
+    `http.server` hands over for a real request - both convert to a
+    dict of names to values, which is all this needs.
     """
     if not headers:
         return True
@@ -377,7 +385,7 @@ def _origin_ok(headers) -> bool:
 def route(
     method: str, path: str, query: dict, body: bytes, headers=None
 ) -> Response:
-    if method == "POST" and not _origin_ok(headers):
+    if method in ("POST", "PUT") and not _origin_ok(headers):
         return _error(403, "cross-origin request refused")
     if method == "GET" and path in ASSET_TYPES:
         name, content_type = ASSET_TYPES[path]
