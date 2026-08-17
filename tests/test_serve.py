@@ -166,17 +166,54 @@ def test_an_opaque_origin_is_refused():
 def test_a_real_http_message_is_refused_like_any_other_mapping():
     """Handler hands `_origin_ok` an email.message.Message, not a dict.
 
-    Every other test in this file passes a plain dict, which would
-    still pass if `_origin_ok` were rewritten to call `headers.get`
-    directly - a dict supports that. A Message does too, but not the
-    same way for a repeated header, so this pins the actual type the
-    HTTP layer hands over rather than a stand-in for it.
+    Every other test in this file passes a plain dict as a stand-in.
+    This one builds the actual object type `http.server` hands over and
+    checks that it travels through `route` and `dict(headers)` intact
+    and still yields the right status.
     """
     headers = Message()
     headers.add_header("Origin", "http://evil.example")
     headers.add_header("Host", "127.0.0.1:7373")
     response = serve.route("POST", "/api/promote", {}, b"", headers)
     assert response.status == 403
+
+
+def test_a_put_from_another_origin_is_refused_without_writing_the_file(
+    tmp_path, monkeypatch
+):
+    """A guard that returns 403 after already writing would be worse than
+    no guard at all, so the 403 alone does not prove the fix works - the
+    file on disk has to be checked too.
+    """
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "Original.", "S.")
+    response = serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"clobbered\n",
+        {"Origin": "http://evil.example", "Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 403
+    on_disk = artifacts.artifact_path(repo, "problem-statement").read_text("utf-8")
+    assert "Original." in on_disk
+
+
+def test_a_put_from_the_app_itself_is_allowed(tmp_path, monkeypatch):
+    from throughline import artifacts
+
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "Original.", "S.")
+    response = serve.route(
+        "PUT",
+        "/api/artifact",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"edited\n",
+        {"Origin": "http://127.0.0.1:7373", "Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 200
 
 
 def test_projects_lists_what_is_tracked(tmp_path, monkeypatch):
