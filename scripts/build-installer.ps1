@@ -13,6 +13,12 @@ $root = Split-Path $PSScriptRoot -Parent
 $triple = "x86_64-pc-windows-msvc"
 $binaries = Join-Path $root "desktop\binaries"
 
+# Tauri names the bundle after the version in its own config, so read it
+# from there rather than repeating it here. A hardcoded copy goes stale on
+# the next bump and the build "succeeds" with nothing to hand over.
+$version = (Get-Content (Join-Path $root "desktop\tauri.conf.json") -Raw |
+    ConvertFrom-Json).version
+
 Write-Host "==> freezing the sidecar" -ForegroundColor Cyan
 
 # --add-data is resolved relative to --specpath, so the source path is
@@ -47,6 +53,8 @@ finally {
     Pop-Location
 }
 
-$installer = Join-Path $root "desktop\target\release\bundle\nsis\Throughline_0.1.0_x64-setup.exe"
+$installer = Join-Path $root `
+    "desktop\target\release\bundle\nsis\Throughline_${version}_x64-setup.exe"
+if (-not (Test-Path $installer)) { throw "no installer at $installer" }
 Write-Host "==> $installer" -ForegroundColor Green
 Get-Item $installer | Select-Object Name, Length, LastWriteTime
