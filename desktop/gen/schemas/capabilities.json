@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"The main window may ask the operating system for a folder. The remote URL below is a wildcard because the sidecar's port is chosen at runtime; see the comment beside WebviewUrl::External in main.rs for what that widens and why it is still safe.","remote":{"urls":["http://127.0.0.1:*"]},"local":true,"windows":["main"],"permissions":["dialog:allow-open"]}}

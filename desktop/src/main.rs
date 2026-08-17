@@ -134,6 +134,7 @@ fn show_failure(app: &tauri::AppHandle, message: &str) -> Result<(), Box<dyn Err
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let (child, url) = match start_sidecar() {
                 Ok(started) => started,
@@ -144,6 +145,19 @@ fn main() {
             };
             app.manage(Sidecar(Mutex::new(Some(child))));
 
+            // This is `WebviewUrl::External`, not `WebviewUrl::App` - the window
+            // loads the sidecar's own http://127.0.0.1:<port>, chosen at runtime
+            // because the sidecar binds port 0. Tauri treats any non-`tauri://`
+            // origin as remote and withholds IPC from it by default, so the
+            // folder-picker plugin needs `capabilities/default.json` to grant it
+            // explicitly - and because the port is only known once the sidecar
+            // has started, that grant has to be the wildcard `http://127.0.0.1:*`
+            // rather than one fixed port. That wildcard is wider than this one
+            // window needs: it hands dialog access to anything answering on
+            // 127.0.0.1, on any port, for as long as this window is open. What
+            // keeps it narrow in practice is that this window only ever
+            // navigates to the sidecar it just spawned - nothing else is loaded
+            // into it, and the sidecar only serves the local Throughline UI.
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
                 .title("Throughline")
                 .inner_size(1180.0, 800.0)
