@@ -353,7 +353,32 @@ ASSET_TYPES = {
 }
 
 
-def route(method: str, path: str, query: dict, body: bytes) -> Response:
+def _origin_ok(headers) -> bool:
+    """Whether a POST came from the app rather than from another page.
+
+    The server has no authentication and its port is chosen at runtime,
+    so there is no configured origin to compare against - the host the
+    request was addressed to is the only thing both sides agree on.
+
+    A missing Origin is allowed on purpose. Browsers always send one on
+    a cross-origin POST; terminals never send one at all, so curl and
+    the CLI are untouched. GETs are left alone: they change nothing, and
+    a cross-origin GET cannot read its own response.
+    """
+    if not headers:
+        return True
+    lowered = {str(name).lower(): value for name, value in dict(headers).items()}
+    origin = lowered.get("origin")
+    if not origin:
+        return True
+    return urlparse(origin).netloc == lowered.get("host", "")
+
+
+def route(
+    method: str, path: str, query: dict, body: bytes, headers=None
+) -> Response:
+    if method == "POST" and not _origin_ok(headers):
+        return _error(403, "cross-origin request refused")
     if method == "GET" and path in ASSET_TYPES:
         name, content_type = ASSET_TYPES[path]
         return _asset(name, content_type)
@@ -388,7 +413,7 @@ class Handler(BaseHTTPRequestHandler):
         query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
-        response = route(method, parsed.path, query, body)
+        response = route(method, parsed.path, query, body, self.headers)
         self.send_response(response.status)
         self.send_header("Content-Type", response.content_type)
         self.send_header("Content-Length", str(len(response.body)))

@@ -86,6 +86,63 @@ def test_asset_paths_cannot_escape_the_package(tmp_path, monkeypatch):
         assert serve.route("GET", attempt, {}, b"").status == 404
 
 
+def test_a_post_from_another_origin_is_refused(tmp_path, monkeypatch):
+    """The server is localhost, unauthenticated, on a guessable port.
+
+    POSTs create files and start processes. A browser always sends
+    Origin on a cross-origin POST, so a page that found the port still
+    cannot make one.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"",
+        {"Origin": "http://evil.example", "Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 403
+
+
+def test_a_post_from_the_app_itself_is_allowed(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"",
+        {"Origin": "http://127.0.0.1:7373", "Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 200
+
+
+def test_a_post_with_no_origin_is_allowed(tmp_path, monkeypatch):
+    """Nothing sends Origin from a terminal. curl and the CLI still work."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"",
+        {"Host": "127.0.0.1:7373"},
+    )
+    assert response.status == 200
+
+
+def test_header_case_does_not_decide_the_origin_check():
+    """http.server hands headers back in whatever case they arrived in."""
+    response = serve.route(
+        "POST",
+        "/api/promote",
+        {},
+        b"",
+        {"origin": "http://evil.example", "host": "127.0.0.1:7373"},
+    )
+    assert response.status == 403
+
+
 def test_projects_lists_what_is_tracked(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
     response = serve.route("GET", "/api/projects", {}, b"")
