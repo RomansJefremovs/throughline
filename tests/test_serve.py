@@ -1,4 +1,5 @@
 import json
+import re
 
 from throughline import registry, serve, state
 
@@ -60,6 +61,22 @@ def test_mermaid_is_served_from_the_package(tmp_path, monkeypatch):
     assert response.status == 200
     assert "javascript" in response.content_type
     assert len(response.body) > 100_000
+
+
+def test_the_hidden_attribute_beats_the_stylesheet():
+    """Everything the app hides, it hides by setting `hidden`.
+
+    The browser's own rule for that attribute is `display: none`, and it
+    is the weakest rule there is: any `display` in app.css targeting the
+    same element outranks it, because author styles beat the user
+    agent's. `.scrim { display: flex }` did that to the conflict dialog
+    and pinned it open over every screen, on top of a full-viewport
+    scrim that ate every click. So app.css has to say so itself, and
+    `!important` is not decoration here - `[hidden]` scores the same as
+    `.scrim` and loses on source order, and less than `#editing`.
+    """
+    css = (serve.ASSETS / "app.css").read_text(encoding="utf-8")
+    assert re.search(r"\[hidden\][^{]*\{[^}]*display\s*:\s*none\s*!important", css)
 
 
 def test_asset_paths_cannot_escape_the_package(tmp_path, monkeypatch):

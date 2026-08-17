@@ -32,6 +32,13 @@
 
 * { box-sizing: border-box; }
 
+/* Every screen, note and dialog here is shown and hidden by the `hidden`
+ * attribute. The browser's own rule for it is the weakest one in the
+ * cascade, so a later `display` anywhere below - `.scrim`, `#editing` -
+ * quietly outranks it and the thing never goes away. Say it here, and
+ * say it loudly enough that nothing below can take it back. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   height: 100vh;

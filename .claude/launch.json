@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "throughline",
-      "runtimeExecutable": "throughline",
-      "runtimeArgs": ["serve"],
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "throughline", "serve"],
       "port": 7373
     }
   ]
