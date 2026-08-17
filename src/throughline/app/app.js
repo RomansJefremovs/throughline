@@ -553,11 +553,22 @@ let flagList = null;
 
 async function drawFlags() {
   if (!flagList) {
-    const fetched = await api("/api/flags");
+    // api() turns a resolved-but-not-ok response into null, but it
+    // rethrows when fetch() itself rejects - the sidecar not answering
+    // at all, not answering no. Both have to end up here rather than
+    // one of them escaping as an unhandled rejection and taking
+    // openAdd() down with it before the screen ever changes.
+    let fetched = null;
+    try {
+      fetched = await api("/api/flags");
+    } catch (problem) {
+      fetched = null;
+    }
     // The cache is only ever filled with a real answer. Caching a
     // failure - or caching [] and calling that done - would make one
-    // bad response permanent: every later openAdd() would draw an
-    // "Extras" box holding nothing, with no sign anything went wrong.
+    // bad response (or one dead sidecar) permanent: every later
+    // openAdd() would draw an "Extras" box holding nothing, with no
+    // sign anything went wrong.
     if (!fetched) {
       addError("Could not load the available flags.");
       return;
@@ -651,10 +662,33 @@ async function submitAdd() {
   const track = () =>
     fetch(`/api/add?path=${encodeURIComponent(path)}`, { method: "POST" });
 
+  // Tracked across the try so a throw in catch can say how far this
+  // actually got, instead of "nothing was created" being repeated for
+  // a request that did write something before it broke.
+  let pipelineMade = false;
+  let pipelineTracked = false;
+
   try {
     let response = await track();
 
     if (response.status === 404) {
+      // Flags are read only on this branch - the one that calls init
+      // and creates a fresh pipeline. A folder that already has one
+      // never reaches here, so refusing outright at the top of this
+      // function would wrongly block that path too; refusing exactly
+      // here blocks only the case flags actually matter for.
+      //
+      // flagList is null until drawFlags() has loaded a real list, so
+      // this is also what stands between "the box rendered empty
+      // because loading failed" and "init runs with flags: [] anyway" -
+      // there is no way to fix a wrongly-flagged pipeline afterwards
+      // short of hand-editing pipeline.yaml, so guessing here is not
+      // an option.
+      if (!flagList) {
+        return addError(
+          "The list of flags never loaded, so a new pipeline can't be created safely yet. Try again."
+        );
+      }
       const created = await fetch("/api/init", {
         method: "POST",
         body: JSON.stringify({
@@ -668,11 +702,15 @@ async function submitAdd() {
         }),
       });
       if (!created.ok) return addError(await said(created));
+      pipelineMade = true;
       response = await track();
     }
 
     if (!response.ok) return addError(await said(response));
 
+    // The write already happened server-side the moment response.ok
+    // is true, whatever the parse below does with the body.
+    pipelineTracked = true;
     const added = await response.json();
     // The project was genuinely created either way, so the switcher
     // and front door must learn about it regardless of what the user
@@ -684,6 +722,18 @@ async function submitAdd() {
     // about.
     projects = (await api("/api/projects")) || [];
     if (current() === "adding") await openProject(added.path);
+  } catch (problem) {
+    // A throw means fetch() itself failed - the sidecar did not
+    // answer at all - which the .ok checks above never see. Say
+    // something true about how far this got rather than a generic
+    // failure that would read as "nothing happened" when it did.
+    if (pipelineTracked) {
+      addError("Added, but the screen could not refresh. Reopen it from the switcher.");
+    } else if (pipelineMade) {
+      addError("The pipeline was created, but Throughline could not track it yet. Click Add again.");
+    } else {
+      addError("Throughline did not respond. Nothing was created.");
+    }
   } finally {
     button.disabled = false;
     button.textContent = label;

@@ -511,4 +511,10 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 .choices label { display: flex; align-items: baseline; gap: 8px; }
 .choices .adds { color: var(--muted); }
 
+/* #add-flags is one .choices child holding all the generated flag
+ * rows, so .choices's own gap only spaces it from the target-side
+ * label below it, not the rows inside it. It needs the same column
+ * gap itself, whatever the flag count turns out to be. */
+#add-flags { display: flex; flex-direction: column; gap: 8px; }
+
 .sw-add { color: var(--accent-text); font-weight: 800; }
