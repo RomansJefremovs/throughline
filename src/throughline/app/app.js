@@ -18,7 +18,17 @@ const LEAD = {
 };
 
 const el = (id) => document.getElementById(id);
-const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "failure"];
+const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "adding", "failure"];
+
+/* Human words for the flags. The list itself comes from the server so it
+ * cannot drift; only the wording lives here, and an unknown flag falls
+ * back to its own name rather than disappearing. */
+const FLAG_WORDS = {
+  has_db: "Database",
+  has_ui: "User interface",
+  has_state: "State",
+  multi_service: "Multiple services",
+};
 
 let project = null;
 let projects = [];
@@ -266,6 +276,12 @@ function drawSwitcher() {
     row.onclick = () => openProject(entry.path);
     box.appendChild(row);
   });
+
+  const more = document.createElement("button");
+  more.className = "sw-row sw-add";
+  more.innerHTML = "<span>+ Add a project…</span>";
+  more.onclick = () => { el("switcher").hidden = true; openAdd(); };
+  box.appendChild(more);
 }
 
 el("go-front").onclick = () => goTo("front");
@@ -278,6 +294,7 @@ el("go-setup").onclick = async () => { await drawSetup(); goTo("setup"); };
 function drawFront() {
   el("front-project").textContent = project.project || project.name;
   el("front-reminder").textContent = project.note || "";
+  el("front-add").hidden = true;
 
   const action = el("front-action");
   const sub = el("front-sub");
@@ -296,6 +313,7 @@ function drawFront() {
 }
 
 el("front-action").onclick = (event) => startNode(project.next, event.currentTarget, project.task);
+el("front-add").onclick = () => openAdd();
 
 /* The map --------------------------------------------------------- */
 
@@ -527,6 +545,130 @@ el("take-theirs").onclick = () => {
   clearConflict();
 };
 
+/* Adding a project ------------------------------------------------- */
+
+let flagList = null;
+
+async function drawFlags() {
+  if (!flagList) flagList = (await api("/api/flags")) || [];
+  const box = el("add-flags");
+  box.innerHTML = "";
+  flagList.forEach((flag) => {
+    const row = document.createElement("label");
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.className = "flag";
+    tick.value = flag.name;
+    const words = document.createElement("span");
+    words.innerHTML =
+      `${esc(FLAG_WORDS[flag.name] || flag.name)} ` +
+      `<span class="adds">${flag.adds ? `adds ${esc(flag.adds)}` : "adds nothing yet"}</span>`;
+    row.append(tick, words);
+    box.appendChild(row);
+  });
+}
+
+function addError(text) {
+  const box = el("add-error");
+  box.textContent = text;
+  box.hidden = !text;
+}
+
+async function openAdd() {
+  el("add-path").value = "";
+  el("add-name").value = "";
+  delete el("add-name").dataset.touched;
+  el("add-target").checked = false;
+  document.querySelector('input[name="add-kind"][value="full"]').checked = true;
+  addError("");
+  await drawFlags();
+  // The picker only exists inside the desktop shell. In a browser the
+  // text field is the whole input, so the button is not offered.
+  el("add-browse").hidden = !(window.__TAURI__ && window.__TAURI__.dialog);
+  goTo("adding");
+  el("add-path").focus();
+}
+
+/* The folder's own name is the project's name nine times out of ten,
+ * so it is filled in until the moment someone types their own. */
+el("add-path").oninput = () => {
+  if (el("add-name").dataset.touched) return;
+  const typed = el("add-path").value.trim().replace(/[\\/]+$/, "");
+  el("add-name").value = typed.split(/[\\/]/).pop() || "";
+};
+
+el("add-name").oninput = () => { el("add-name").dataset.touched = "1"; };
+
+el("add-browse").onclick = async () => {
+  const chosen = await window.__TAURI__.dialog.open({
+    directory: true,
+    multiple: false,
+  });
+  if (typeof chosen !== "string") return;
+  el("add-path").value = chosen;
+  el("add-path").dispatchEvent(new Event("input"));
+};
+
+el("add-cancel").onclick = async () => {
+  if (history.length) await el("back").onclick();
+  else show("front");
+};
+
+async function said(response) {
+  const problem = await response.json().catch(() => ({}));
+  return problem.error || "That didn't work.";
+}
+
+/* Add first, and only create a pipeline if there is none.
+ *
+ * The two endpoints mirror the two CLI commands, and their refusals
+ * compose: add writes nothing, so a mistyped path is turned away before
+ * anything can be created. 404 from add means one thing only - the
+ * folder is real and has no pipeline in it. */
+el("add-submit").onclick = async () => {
+  const path = el("add-path").value.trim();
+  if (!path) return addError("Type or choose a folder.");
+
+  const button = el("add-submit");
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Adding…";
+  addError("");
+
+  const track = () =>
+    fetch(`/api/add?path=${encodeURIComponent(path)}`, { method: "POST" });
+
+  try {
+    let response = await track();
+
+    if (response.status === 404) {
+      const created = await fetch("/api/init", {
+        method: "POST",
+        body: JSON.stringify({
+          path,
+          project: el("add-name").value.trim(),
+          flags: [...document.querySelectorAll("#add-flags input.flag:checked")]
+            .map((tick) => tick.value),
+          target_side: el("add-target").checked,
+          task_only:
+            document.querySelector('input[name="add-kind"]:checked').value === "task",
+        }),
+      });
+      if (!created.ok) return addError(await said(created));
+      response = await track();
+    }
+
+    if (!response.ok) return addError(await said(response));
+
+    const added = await response.json();
+    projects = (await api("/api/projects")) || [];
+    await openProject(added.path);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+};
+
 /* Tasks ----------------------------------------------------------- */
 
 async function drawTasks() {
@@ -645,8 +787,9 @@ async function start() {
     if (!home || !home.path) {
       el("front-project").textContent = "No projects yet";
       el("front-reminder").textContent =
-        "Run throughline init in a repository, then throughline add to track it.";
+        "Throughline tracks repositories you have pointed it at.";
       el("front-action").hidden = true;
+      el("front-add").hidden = false;
       el("front-sub").textContent = "";
       show("front");
       return;
