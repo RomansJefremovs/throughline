@@ -94,6 +94,48 @@ def _post_add(query: dict) -> Response:
     return _json_response({"path": str(repo)})
 
 
+def _post_init(body: bytes) -> Response:
+    """Create a pipeline in a folder. Mirrors cmd_init.
+
+    A JSON body rather than query parameters because the flags are a
+    list, and Handler keeps only the first value of a repeated
+    parameter - sent in the query, every flag but one would vanish
+    silently.
+    """
+    try:
+        payload = json.loads(body or b"{}")
+    except json.JSONDecodeError:
+        return _error(400, "body must be json")
+    if not isinstance(payload, dict):
+        return _error(400, "body must be a json object")
+
+    repo, failure = _named_dir(payload.get("path"))
+    if failure is not None:
+        return failure
+
+    project = str(payload.get("project") or "").strip()
+    if not project:
+        return _error(400, "project is required")
+    if state_module.exists(repo):
+        return _error(409, "that folder already has a pipeline")
+
+    asked = payload.get("flags") or []
+    if not isinstance(asked, list):
+        return _error(400, "flags must be a list")
+    for name in asked:
+        if name not in nodes_module.FLAGS:
+            return _error(400, f"no such flag: {name}")
+
+    state_module.init(
+        repo,
+        project,
+        {name: name in asked for name in nodes_module.FLAGS},
+        target_side=bool(payload.get("target_side")),
+        task_only=bool(payload.get("task_only")),
+    )
+    return _json_response({"path": str(repo), "project": project})
+
+
 def _nodes_payload(repo: Path) -> list[dict]:
     loaded = state_module.load(repo)
     active = nodes_module.active_nodes(loaded.flags, tuple(loaded.on_demand.keys()))
@@ -444,6 +486,8 @@ def route(
         return _put_artifact(query, body)
     if method == "POST" and path == "/api/add":
         return _post_add(query)
+    if method == "POST" and path == "/api/init":
+        return _post_init(body)
     if method == "POST" and path == "/api/promote":
         return _post_promote(query)
     if method == "POST" and path == "/api/start":

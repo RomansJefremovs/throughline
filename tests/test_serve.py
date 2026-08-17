@@ -753,3 +753,101 @@ def test_adding_a_folder_twice_is_harmless(tmp_path, monkeypatch):
     serve.route("POST", "/api/add", {"path": str(repo)}, b"")
     serve.route("POST", "/api/add", {"path": str(repo)}, b"")
     assert registry.projects() == [repo.resolve()]
+
+
+def test_a_pipeline_can_be_created_from_the_app(tmp_path, monkeypatch):
+    """Mirrors cmd_init, including which nodes the flags switch on."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    body = json.dumps(
+        {
+            "path": str(repo),
+            "project": "Bare",
+            "flags": ["has_db"],
+            "target_side": True,
+            "task_only": False,
+        }
+    ).encode("utf-8")
+
+    response = serve.route("POST", "/api/init", {}, body)
+    assert response.status == 200
+
+    loaded = state.load(repo)
+    assert loaded.project == "Bare"
+    assert loaded.flags["has_db"] is True
+    assert loaded.flags["has_state"] is False
+    assert loaded.target_side is True
+    assert loaded.task_only is False
+
+
+def test_creating_a_pipeline_can_make_a_task_only_repo(tmp_path, monkeypatch):
+    """Task-only is the mode the Setup screen exists for."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "client"
+    repo.mkdir()
+    body = json.dumps(
+        {"path": str(repo), "project": "Client", "task_only": True}
+    ).encode("utf-8")
+
+    serve.route("POST", "/api/init", {}, body)
+    assert state.load(repo).task_only is True
+
+
+def test_creating_a_pipeline_over_an_existing_one_is_refused(tmp_path, monkeypatch):
+    """Same refusal as cmd_init, and the file must not move."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "taken"
+    repo.mkdir()
+    state.init(repo, "Original", {})
+    before = state.state_path(repo).read_bytes()
+
+    body = json.dumps({"path": str(repo), "project": "Usurper"}).encode("utf-8")
+    response = serve.route("POST", "/api/init", {}, body)
+
+    assert response.status == 409
+    assert state.state_path(repo).read_bytes() == before
+
+
+def test_creating_a_pipeline_never_creates_the_folder(tmp_path, monkeypatch):
+    """state.save calls mkdir(parents=True).
+
+    Over HTTP that turns one mistyped character into a directory tree
+    somewhere nobody asked for.
+    """
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    missing = tmp_path / "not" / "there"
+
+    body = json.dumps({"path": str(missing), "project": "Ghost"}).encode("utf-8")
+    response = serve.route("POST", "/api/init", {}, body)
+
+    assert response.status == 400
+    assert not missing.exists()
+    assert not (tmp_path / "not").exists()
+
+
+def test_creating_a_pipeline_needs_a_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    body = json.dumps({"path": str(repo), "project": "   "}).encode("utf-8")
+    assert serve.route("POST", "/api/init", {}, body).status == 400
+
+
+def test_an_unknown_flag_is_refused(tmp_path, monkeypatch):
+    """Flags are an allow-list, like node ids are."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    body = json.dumps(
+        {"path": str(repo), "project": "Bare", "flags": ["has_teeth"]}
+    ).encode("utf-8")
+
+    response = serve.route("POST", "/api/init", {}, body)
+    assert response.status == 400
+    assert not state.exists(repo)
+
+
+def test_a_body_that_is_not_json_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    assert serve.route("POST", "/api/init", {}, b"not json").status == 400
