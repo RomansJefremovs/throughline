@@ -462,11 +462,20 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 
 /* Adding a project -------------------------------------------------- */
 
+#adding { --group-edge: 3px; --group-pad: 20px; }
+
 /* The label column is pinned to one width so "Folder", "Name", "Kind" and
  * "Extras" line up down the form instead of each row's input starting
  * wherever its own label happens to end. */
 .field { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; }
 .field .lbl { flex: none; width: 74px; font-size: 12px; color: var(--muted); }
+
+/* The Folder row sits outside #add-new, so without this it starts flush
+ * with the fieldset's own border instead of the labels inside it - the
+ * column would jog sideways at the box edge. Deriving the offset from
+ * the fieldset's own edge variables instead of a bare number keeps the
+ * two in step if that edge ever changes. */
+#adding > .field { margin-left: calc(var(--group-edge) + var(--group-pad)); }
 
 .field input[type="text"] {
   flex: 1;
@@ -485,8 +494,8 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 
 #add-new {
   border: 1px solid var(--divider);
-  border-left: 3px solid var(--divider);
-  padding: 18px 20px 4px;
+  border-left: var(--group-edge) solid var(--divider);
+  padding: 18px var(--group-pad) 4px;
   margin: 0 0 20px;
 }
 
