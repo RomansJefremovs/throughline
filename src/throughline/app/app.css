@@ -458,6 +458,14 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 .task .dot.filled { background: var(--ink); border-color: var(--ink); }
 .task .dot.current { background: var(--accent); border-color: var(--accent); }
 .task .link { width: 14px; height: 1px; background: var(--divider); }
+/* Quiet until the row is under the cursor, like the switcher's. An
+ * action nobody is reaching for should not compete with the task name. */
+.task-drop { opacity: 0; flex: none; }
+.task:hover .task-drop, .task:focus-within .task-drop { opacity: 1; }
+
+#map-target { margin-top: -12px; }
+#map-target .linkish { margin-left: 8px; }
+
 .task.abandoned { opacity: .5; }
 .task.abandoned .name { text-decoration: line-through; color: var(--muted); font-weight: 400; }
 

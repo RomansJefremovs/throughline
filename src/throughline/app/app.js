@@ -449,9 +449,37 @@ function layout(nodes) {
   return placed;
 }
 
+/* The switch that decides whether nodes propose where this should go, or
+ * only describe where it is. It lives on the map because the map is the
+ * project as a whole, and because with it off the Gaps section returns
+ * an empty list forever with no hint that a switch exists at all. */
+function drawTarget() {
+  const on = !!project.target_side;
+  el("target-text").textContent = on
+    ? "Nodes describe what is, and what should be."
+    : "Nodes describe what is.";
+  el("target-toggle").textContent = on ? "Stop proposing changes" : "Also propose changes";
+}
+
+el("target-toggle").onclick = async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  const query = new URLSearchParams({ repo: project.path });
+  if (!project.target_side) query.set("on", "1");
+  const response = await fetch(`/api/target?${query}`, { method: "POST" });
+  button.disabled = false;
+  if (!response.ok) {
+    el("target-text").textContent = await said(response);
+    return;
+  }
+  project.target_side = (await response.json()).target_side;
+  drawTarget();
+};
+
 function drawMap() {
   el("map-lede").textContent =
     `${project.project || project.name} — how the documents depend on each other.`;
+  drawTarget();
 
   el("phases").innerHTML = PHASES.map((p) => `<span>${p}</span>`).join("");
 
@@ -575,7 +603,21 @@ async function drawStale(nodeId, slug) {
   note.hidden = false;
 }
 
-el("dismiss-stale").onclick = () => { el("stale-note").hidden = true; };
+/* Rule 5 allows one sentence and a one-word way to dismiss it. The word
+ * has to mean something: hiding the div and storing nothing brought the
+ * same sentence back next visit, which is the nagging the rule forbids.
+ *
+ * Dismissed is not silenced - it records these inputs as seen, so the
+ * next real change to them says so again. */
+el("dismiss-stale").onclick = async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  const query = new URLSearchParams({ repo: project.path, node: openNode });
+  const response = await fetch(`/api/stale?${query}`, { method: "POST" });
+  button.disabled = false;
+  if (response.ok) el("stale-note").hidden = true;
+  else el("stale-text").textContent = await said(response);
+};
 
 /* Confirming is where a document stops being the agent's guess and
  * becomes its owner's. The app is where a draft is actually read, so it
@@ -973,8 +1015,12 @@ async function drawTasks() {
   }
 
   list.forEach((task) => {
-    const row = document.createElement("button");
+    // A div, because the abandon control is a button and one cannot live
+    // inside the other.
+    const row = document.createElement("div");
     row.className = `task ${task.status}`;
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
 
     const name = document.createElement("div");
     name.className = "name";
@@ -996,8 +1042,41 @@ async function drawTasks() {
       }
     });
 
-    row.append(name, steps);
-    row.onclick = () => showArtifact(task.next || task.nodes[0].id, task.slug);
+    /* Abandoning is reversible and costs nothing, which is the only
+     * reason task status is stored at all: an abandoned task stops
+     * competing for the one next-action slot. Leaving that only on the
+     * CLI meant the slot could be blocked from a screen that could see
+     * the blockage and do nothing about it. */
+    const gone = task.status === "abandoned";
+    const toggle = document.createElement("button");
+    toggle.className = "linkish task-drop";
+    toggle.textContent = gone ? "Reopen" : "Abandon";
+    toggle.onclick = async (event) => {
+      event.stopPropagation();
+      toggle.disabled = true;
+      const query = new URLSearchParams({ repo: project.path, slug: task.slug });
+      const route = gone ? "/api/reopen" : "/api/abandon";
+      const response = await fetch(`${route}?${query}`, { method: "POST" });
+      toggle.disabled = false;
+      if (!response.ok) {
+        toggle.textContent = await said(response);
+        return;
+      }
+      // The front door's one action can change with this, so both redraw.
+      const fresh = await api(`/api/project?repo=${encodeURIComponent(project.path)}`);
+      if (fresh) project = fresh;
+      await drawTasks();
+    };
+
+    row.append(name, steps, toggle);
+    const open = () => showArtifact(task.next || task.nodes[0].id, task.slug);
+    row.onclick = open;
+    row.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    };
     rows.appendChild(row);
   });
 }
