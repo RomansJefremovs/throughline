@@ -51,13 +51,35 @@ def test_installed_is_empty_when_neither_is_on_path(tmp_path, monkeypatch):
     assert agents.installed() == []
 
 
-def test_claude_takes_its_prompt_positionally():
+def test_claude_takes_its_prompt_positionally(monkeypatch):
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/bin/{name}")
     argv, environment = agents.command("claude", "do the thing")
-    assert argv == ["claude", "do the thing"]
+    assert argv == ["/bin/claude", "do the thing"]
     assert environment == {}
 
 
-def test_opencode_takes_a_flag_and_needs_the_question_tool_turned_on():
+def test_argv_uses_the_resolved_path_not_the_bare_name(monkeypatch):
+    """npm installs opencode as a .CMD shim on Windows.
+
+    CreateProcess will not find a .CMD by name the way a shell would, so
+    a bare name spawns as "not found" for something `which` has just
+    reported as installed - which is the most confusing failure available.
+    """
+    monkeypatch.setattr(
+        agents.shutil, "which", lambda name: rf"C:\shims\{name}.CMD"
+    )
+    argv, _ = agents.command("opencode", "go")
+    assert argv == [r"C:\shims\opencode.CMD", "--prompt", "go"]
+
+
+def test_an_unresolvable_name_is_left_as_it_is(monkeypatch):
+    """Let the spawn raise its own error rather than inventing one here."""
+    monkeypatch.setattr(agents.shutil, "which", lambda name: None)
+    argv, _ = agents.command("claude", "go")
+    assert argv == ["claude", "go"]
+
+
+def test_opencode_takes_a_flag_and_needs_the_question_tool_turned_on(monkeypatch):
     """Unset, opencode registers no picker at all.
 
     Verified against the 1.18.12 binary: the builtin tool list is
@@ -65,6 +87,7 @@ def test_opencode_takes_a_flag_and_needs_the_question_tool_turned_on():
     Without it, binding rule 3 has no tool to bind to and every
     interview degrades to prose.
     """
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/bin/{name}")
     argv, environment = agents.command("opencode", "do the thing")
-    assert argv == ["opencode", "--prompt", "do the thing"]
+    assert argv == ["/bin/opencode", "--prompt", "do the thing"]
     assert environment == {"OPENCODE_ENABLE_QUESTION_TOOL": "1"}

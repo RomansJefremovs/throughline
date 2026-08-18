@@ -27,10 +27,11 @@ class Agent:
     prompt_flag: str | None = None
     environment: dict[str, str] = field(default_factory=dict)
 
-    def argv(self, prompt: str) -> list[str]:
+    def argv(self, prompt: str, executable: str | None = None) -> list[str]:
+        first = executable or self.executable
         if self.prompt_flag is None:
-            return [self.executable, prompt]
-        return [self.executable, self.prompt_flag, prompt]
+            return [first, prompt]
+        return [first, self.prompt_flag, prompt]
 
 
 # Order matters twice: `installed()` reports in it, and a machine with
@@ -76,6 +77,19 @@ def choose(name: str) -> str:
 
 
 def command(name: str, prompt: str) -> tuple[list[str], dict[str, str]]:
-    """The argv to run and the environment to add to the inherited one."""
+    """The argv to run and the environment to add to the inherited one.
+
+    argv[0] is the resolved path rather than the bare name. npm installs
+    opencode as `opencode.CMD` on Windows, and CreateProcess will not
+    find a `.CMD` by name the way a shell would - so a bare name fails
+    as "not found" for something `installed()` has just reported as
+    present, which is the most confusing failure available.
+
+    An unresolvable name is passed through unchanged so the spawn raises
+    its own error rather than one invented here.
+    """
     agent = AGENTS[name]
-    return agent.argv(prompt), dict(agent.environment)
+    return (
+        agent.argv(prompt, shutil.which(agent.executable)),
+        dict(agent.environment),
+    )
