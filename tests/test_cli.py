@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from throughline import cli, state
+from throughline import agents, cli, state
 
 
 def run(capsys, *args):
@@ -569,3 +569,25 @@ def test_commands_fail_cleanly_without_a_pipeline(tmp_path, capsys):
     code, out = run(capsys, "status", "--repo", str(tmp_path))
     assert code == 1
     assert "no pipeline" in out.lower()
+
+
+def test_agent_prints_the_current_choice(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/bin/{name}")
+
+    code, out = run(capsys, "agent", "--json")
+    assert code == 0
+    assert json.loads(out) == {
+        "chosen": None,
+        "installed": ["claude", "opencode"],
+    }
+
+
+def test_agent_sets_the_choice(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/bin/{name}")
+
+    code, out = run(capsys, "agent", "opencode", "--json")
+    assert code == 0
+    assert json.loads(out)["chosen"] == "opencode"
+    assert (tmp_path / "home" / "agent").read_text(encoding="utf-8") == "opencode\n"

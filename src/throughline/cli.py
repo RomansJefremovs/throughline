@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
+from . import agents as agents_module
 from . import gaps, registry, serve, setup, tasks
 from . import state as state_module
 from . import status as status_module
@@ -64,6 +65,24 @@ def cmd_init(args) -> int:
         },
         args.json,
         f"created {state_module.state_path(repo)}",
+    )
+    return 0
+
+
+def cmd_agent(args) -> int:
+    if args.name:
+        try:
+            agents_module.choose(args.name)
+        except ValueError as error:
+            print(error)
+            return 1
+    chosen = agents_module.chosen()
+    installed = agents_module.installed()
+    _emit(
+        {"chosen": chosen, "installed": installed},
+        args.json,
+        f"agent: {chosen or 'not chosen'}\n"
+        f"installed: {', '.join(installed) or 'none'}",
     )
     return 0
 
@@ -466,6 +485,9 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument("--summary", required=True)
     setup_cmd.add_argument("--body")
     setup_cmd.add_argument("--body-file")
+
+    agent = add("agent", cmd_agent, "which agent gets handed the work")
+    agent.add_argument("name", nargs="?", choices=sorted(agents_module.AGENTS))
 
     target = add("target", cmd_target, "turn the target side on or off")
     target.add_argument("setting", choices=["on", "off"])
