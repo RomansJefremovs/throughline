@@ -307,6 +307,29 @@ def _post_promote(query: dict) -> Response:
     return _error(404, "no such gap")
 
 
+def _post_task(query: dict) -> Response:
+    """Start a task from a ticket.
+
+    The same tasks.create that promoting a gap already calls, with the
+    other origin. Creating a task is not an interview - it is one line the
+    user is reading off a ticket - so the app does it, and hands the work
+    that follows to Claude.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    title = (query.get("title") or "").strip()
+    if not title:
+        return _error(400, "title is required")
+    slug = tasks.create(
+        repo,
+        title,
+        origin="ticket",
+        reference=(query.get("reference") or "").strip(),
+    )
+    return _json_response({"slug": slug, "title": title})
+
+
 def _artifact_target(repo: Path, query: dict) -> tuple[Path | None, Response | None]:
     """Where an artifact lives, project or task, from the same query."""
     node = query.get("node")
@@ -579,6 +602,8 @@ def route(
         return _post_add(query)
     if method == "POST" and path == "/api/init":
         return _post_init(body)
+    if method == "POST" and path == "/api/task":
+        return _post_task(query)
     if method == "POST" and path == "/api/promote":
         return _post_promote(query)
     if method == "POST" and path == "/api/start":

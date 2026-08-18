@@ -1123,3 +1123,80 @@ def test_setup_reports_when_claude_is_missing(tmp_path, monkeypatch):
     )
     assert response.status == 500
     assert "claude" in _json(response)["error"].lower()
+
+
+def test_a_task_can_be_started_from_a_ticket(tmp_path, monkeypatch):
+    """The app's own work, unlike setup.
+
+    A task title is one line the user is already reading off a ticket, not
+    an interview - so this mirrors the promote path rather than opening a
+    terminal to capture a string.
+    """
+    from throughline import tasks as tasks_module
+
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route(
+        "POST",
+        "/api/task",
+        {"repo": str(repo), "title": "Fix VAT on credit notes"},
+        b"",
+    )
+    assert response.status == 200
+
+    slug = _json(response)["slug"]
+    made = [t for t in tasks_module.all_tasks(repo) if t.slug == slug]
+    assert len(made) == 1
+    assert made[0].title == "Fix VAT on credit notes"
+    assert made[0].origin == "ticket"
+
+
+def test_a_started_task_can_carry_its_ticket_reference(tmp_path, monkeypatch):
+    from throughline import tasks as tasks_module
+
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route(
+        "POST",
+        "/api/task",
+        {"repo": str(repo), "title": "Fix VAT", "reference": "ERP-4821"},
+        b"",
+    )
+    slug = _json(response)["slug"]
+    made = [t for t in tasks_module.all_tasks(repo) if t.slug == slug]
+    assert made[0].reference == "ERP-4821"
+
+
+def test_a_task_with_no_title_is_refused(tmp_path, monkeypatch):
+    """Whitespace is not a title, and nothing is written for one."""
+    from throughline import tasks as tasks_module
+
+    repo = _project(tmp_path, monkeypatch)
+    for attempt in ("", "   "):
+        response = serve.route(
+            "POST", "/api/task", {"repo": str(repo), "title": attempt}, b""
+        )
+        assert response.status == 400
+    assert tasks_module.all_tasks(repo) == []
+
+
+def test_starting_a_task_refuses_an_untracked_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    state.init(stranger, "Stranger", {})
+    response = serve.route(
+        "POST", "/api/task", {"repo": str(stranger), "title": "Nope"}, b""
+    )
+    assert response.status == 403
+
+
+def test_a_started_task_is_immediately_the_next_thing(tmp_path, monkeypatch):
+    """The point of creating it here: the front door has to move on.
+
+    Without this the app would create a task and still show nothing to
+    do, which is the dead end this whole change exists to close.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    serve.route("POST", "/api/task", {"repo": str(repo), "title": "Fix VAT"}, b"")
+    payload = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert payload["task"]
+    assert payload["next"] == "understand"
