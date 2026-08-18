@@ -415,6 +415,33 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     )
 
 
+def _post_confirm(query: dict) -> Response:
+    """Promote a drafted node to current. Mirrors cmd_confirm.
+
+    The app is where a drafted node is actually read, so it is where
+    confirming belongs. It refuses a node with nothing written for the
+    same reason the CLI does: confirming says somebody read it, and
+    there is nothing to have read.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node_id = query.get("node") or ""
+    try:
+        nodes_module.get_node(node_id)
+    except KeyError:
+        return _error(400, "no such node")
+    if not artifacts.artifact_path(repo, node_id).is_file():
+        return _error(404, f"no artifact written for {node_id}")
+
+    loaded = state_module.load(repo)
+    entry = state_module.node_state(loaded, node_id)
+    entry.status = state_module.CURRENT
+    entry.updated = state_module.utcnow()
+    state_module.save(repo, loaded)
+    return _json_response({"node": node_id, "status": entry.status})
+
+
 def _post_forget(query: dict) -> Response:
     """Stop tracking a repo, and optionally delete what was written in it.
 
@@ -675,6 +702,8 @@ def route(
         return _put_artifact(query, body)
     if method == "POST" and path == "/api/agent":
         return _post_agent(query)
+    if method == "POST" and path == "/api/confirm":
+        return _post_confirm(query)
     if method == "POST" and path == "/api/forget":
         return _post_forget(query)
     if method == "POST" and path == "/api/add":

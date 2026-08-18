@@ -6,7 +6,7 @@ from email.message import Message
 
 import pytest
 
-from throughline import agents, nodes, registry, serve, skill, state
+from throughline import agents, artifacts, nodes, registry, serve, skill, state
 
 
 @pytest.fixture(autouse=True)
@@ -908,15 +908,17 @@ def test_the_flags_are_served_with_what_each_one_adds(tmp_path, monkeypatch):
     assert by_name["has_state"] == "State machine"
 
 
-def test_a_flag_that_switches_on_nothing_says_so(tmp_path, monkeypatch):
-    """has_ui is declared but no node declares it.
+def test_every_flag_offered_switches_a_node_on(tmp_path, monkeypatch):
+    """A checkbox that changes nothing is worse than no checkbox.
 
-    Until that is resolved the form must describe it honestly rather
-    than offer a checkbox that quietly does nothing.
+    has_ui shipped doing exactly that - offered on the add form, stored
+    in pipeline.yaml, gating no node at all. This is the assertion that
+    would have caught it, and it is why the flag is gone rather than
+    given a node nobody had asked for.
     """
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path))
     payload = _json(serve.route("GET", "/api/flags", {}, b""))
-    assert {"name": "has_ui", "adds": None} in payload
+    assert [item["name"] for item in payload if not item["adds"]] == []
 
 
 def test_the_running_server_actually_enforces_the_origin_check():
@@ -1446,3 +1448,55 @@ def test_forgetting_refuses_another_origin(tmp_path, monkeypatch):
     assert response.status == 403
     assert state.exists(repo)
     assert registry.projects() == [repo.resolve()]
+
+
+def test_confirming_promotes_a_drafted_node(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "body", "a summary")
+    loaded = state.load(repo)
+    state.node_state(loaded, "problem-statement").status = state.DRAFTED
+    state.save(repo, loaded)
+
+    response = serve.route(
+        "POST", "/api/confirm", {"repo": str(repo), "node": "problem-statement"}, b""
+    )
+    assert response.status == 200
+    assert _json(response)["status"] == "current"
+    assert state.load(repo).nodes["problem-statement"].status == "current"
+
+
+def test_confirming_refuses_a_node_with_nothing_written(tmp_path, monkeypatch):
+    """Confirming means someone read it. There is nothing to have read."""
+    repo = _project(tmp_path, monkeypatch)
+
+    response = serve.route(
+        "POST", "/api/confirm", {"repo": str(repo), "node": "problem-statement"}, b""
+    )
+    assert response.status == 404
+    assert state.load(repo).nodes["problem-statement"].status == "empty"
+
+
+def test_confirming_refuses_an_unknown_node(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route(
+        "POST", "/api/confirm", {"repo": str(repo), "node": "nonsense"}, b""
+    )
+    assert response.status == 400
+
+
+def test_confirming_refuses_another_origin(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    artifacts.write_artifact(repo, "problem-statement", "body", "a summary")
+    loaded = state.load(repo)
+    state.node_state(loaded, "problem-statement").status = state.DRAFTED
+    state.save(repo, loaded)
+
+    response = serve.route(
+        "POST",
+        "/api/confirm",
+        {"repo": str(repo), "node": "problem-statement"},
+        b"",
+        {"Host": "127.0.0.1:7373", "Origin": "http://evil.example"},
+    )
+    assert response.status == 403
+    assert state.load(repo).nodes["problem-statement"].status == "drafted"
