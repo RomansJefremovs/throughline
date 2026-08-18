@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import agents, gaps, hashing, registry, setup, tasks
+from . import agents, gaps, hashing, registry, setup, skill, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -517,13 +517,19 @@ def _post_start(query: dict) -> Response:
     if failure is not None:
         return failure
 
+    # An agent that cannot find the skill will improvise, which is worse
+    # than refusing. This costs one stat call per hand-off.
+    fresh = False
+    if not skill.present():
+        fresh = bool(skill.install().get("written"))
+
     try:
         spawn_agent(repo, prompt, name)
     except FileNotFoundError:
         return _error(500, f"{name} was not found on PATH")
     except OSError as err:
         return _error(500, f"could not start {name}: {err}")
-    return _json_response({**started, "agent": name})
+    return _json_response({**started, "agent": name, "skill_installed": fresh})
 
 
 def _asset(name: str, content_type: str) -> Response:

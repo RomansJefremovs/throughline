@@ -6,7 +6,7 @@ from email.message import Message
 
 import pytest
 
-from throughline import agents, nodes, registry, serve, state
+from throughline import agents, nodes, registry, serve, skill, state
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +19,7 @@ def _an_agent_to_hand_to(monkeypatch):
     """
     monkeypatch.setattr(agents, "chosen", lambda: "claude")
     monkeypatch.setattr(agents, "installed", lambda: ["claude", "opencode"])
+    monkeypatch.setattr(skill, "present", lambda home=None: True)
 
 
 def _project(tmp_path, monkeypatch, name="Demo"):
@@ -1357,3 +1358,38 @@ def test_choosing_an_agent_refuses_a_foreign_host(tmp_path, monkeypatch):
     )
     assert response.status == 403
     assert not (tmp_path / "home" / "agent").exists()
+
+
+def test_a_hand_off_installs_the_skill_when_it_is_missing(tmp_path, monkeypatch):
+    """Handing a repo to an agent that has never heard of the skill is
+    the same as not handing it over at all."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
+    monkeypatch.setattr(skill, "present", lambda home=None: False)
+    installs = []
+    monkeypatch.setattr(
+        skill, "install", lambda **kw: installs.append(kw) or {"written": True}
+    )
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 200
+    assert _json(response)["skill_installed"] is True
+    assert len(installs) == 1
+
+
+def test_a_hand_off_leaves_an_installed_skill_alone(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
+    installs = []
+    monkeypatch.setattr(
+        skill, "install", lambda **kw: installs.append(kw) or {"written": True}
+    )
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 200
+    assert _json(response)["skill_installed"] is False
+    assert installs == []
