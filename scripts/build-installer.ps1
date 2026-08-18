@@ -19,11 +19,29 @@ $binaries = Join-Path $root "desktop\binaries"
 $version = (Get-Content (Join-Path $root "desktop\tauri.conf.json") -Raw |
     ConvertFrom-Json).version
 
+# Find an interpreter that can actually run PyInstaller.
+#
+# Bare `python` is not good enough on Windows: the Store alias in
+# %LOCALAPPDATA%\Microsoft\WindowsApps answers to the name, exits without
+# doing anything, and the build then fails with "PyInstaller failed" -
+# which sends you looking at PyInstaller rather than at PATH.
+#
+# The repo's own venv is preferred because it is where the dev extra
+# installs PyInstaller in the first place.
+$python = Join-Path $root ".venv\Scripts\python.exe"
+if (-not (Test-Path $python)) { $python = "python" }
+
+& $python -c "import PyInstaller" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "no interpreter with PyInstaller. Tried '$python'. Run: python -m pip install -e `".[dev]`""
+}
+Write-Host "==> using $((& $python -c 'import sys; print(sys.executable)'))" -ForegroundColor DarkGray
+
 Write-Host "==> freezing the sidecar" -ForegroundColor Cyan
 
 # --add-data is resolved relative to --specpath, so the source path is
 # absolute. A relative one silently resolves inside build/ and fails.
-python -m PyInstaller `
+& $python -m PyInstaller `
     --onefile --clean --noconfirm `
     --name throughline `
     --paths (Join-Path $root "src") `
