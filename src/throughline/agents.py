@@ -41,9 +41,11 @@ AGENTS: dict[str, Agent] = {
     "opencode": Agent(
         "opencode",
         "--prompt",
-        # opencode's picker is behind a feature flag. Unset, the tool is
-        # not registered at all, and binding rule 3 - every question
-        # through the picker, never as prose - cannot be kept.
+        # Binding rule 3 needs opencode's `question` tool, and the binary
+        # gates that tool on a flag read from this variable. Measured on
+        # 1.18.12 it is registered whether the variable is set, unset or
+        # false - so this pins the behaviour rather than enabling it, and
+        # costs nothing if the default ever flips the other way.
         {"OPENCODE_ENABLE_QUESTION_TOOL": "1"},
     ),
 }

@@ -44,18 +44,22 @@ Answers arrive as `{answers: [[...]]}` — an array of strings per question, in
 the order asked. `questions` is an array on both, so both can batch several
 questions into one call, and binding rule 3 forbids that on both.
 
-**The picker is behind a feature flag.** The binary registers the builtin tool
-list as `...ro?[H.question]:[]`, where `ro` is
-`enableQuestionTool: k("OPENCODE_ENABLE_QUESTION_TOOL")`. Unset, the tool does
-not exist.
+**The picker is gated on a feature flag, but not by default.** The binary
+registers the builtin tool list as `...ro?[H.question]:[]`, and reads
+`enableQuestionTool: k("OPENCODE_ENABLE_QUESTION_TOOL")`.
 
-`opencode debug agent build` prints `"question": true` whether or not the flag
-is set. That line is a permission default and is **not** evidence the tool is
-live; the two outputs are byte-identical with the flag on and off.
+Reading that as "unset, the tool does not exist" was wrong, and it is corrected
+here rather than left standing. Querying a running server's tool registry on
+1.18.12 returns `question` with the variable set, unset, and set to `false`
+alike. Whatever `ro` resolves to, it is not simply that variable.
 
-So the spawn sets `OPENCODE_ENABLE_QUESTION_TOOL=1`. Without it, binding rule 3
-has no tool to bind to and every interview silently degrades to prose, which is
-the exact failure the rule exists to prevent.
+The spawn still sets `OPENCODE_ENABLE_QUESTION_TOOL=1`. It pins the behaviour
+instead of inheriting a default that could flip, and it costs nothing. It is
+insurance, not a requirement, and the code says so.
+
+Separately: `opencode debug agent build` prints `"question": true` whether or
+not the flag is set. That line is a permission default and is **not** evidence
+the tool is live - the two outputs are byte-identical either way.
 
 ## The gap this also closes
 

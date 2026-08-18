@@ -80,12 +80,13 @@ def test_an_unresolvable_name_is_left_as_it_is(monkeypatch):
 
 
 def test_opencode_takes_a_flag_and_needs_the_question_tool_turned_on(monkeypatch):
-    """Unset, opencode registers no picker at all.
+    """opencode's picker is asked for rather than assumed.
 
-    Verified against the 1.18.12 binary: the builtin tool list is
-    `...ro?[H.question]:[]` where `ro` is OPENCODE_ENABLE_QUESTION_TOOL.
-    Without it, binding rule 3 has no tool to bind to and every
-    interview degrades to prose.
+    The binary gates its `question` tool on a flag read from this
+    variable. Measured against 1.18.12's tool registry, the tool is
+    present with the variable set, unset and false alike - so setting it
+    pins the behaviour rather than enabling it. Binding rule 3 has no
+    picker without that tool, which is a dependency worth stating.
     """
     monkeypatch.setattr(agents.shutil, "which", lambda name: f"/bin/{name}")
     argv, environment = agents.command("opencode", "do the thing")
