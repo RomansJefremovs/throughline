@@ -263,3 +263,9 @@ Tauri bundles that exe as a sidecar. The result lands in
 | `skills/throughline/` | the skill that runs the interviews |
 | `desktop/` | the Tauri shell |
 | `docs/superpowers/` | design specs and implementation plans |
+
+---
+
+## Licence
+
+[MIT](LICENSE) © Romans Jefremovs
