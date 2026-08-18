@@ -137,9 +137,11 @@ paste, and that only happens because setup went looking.
 architecture questions, nothing about the system as a whole. Ask which the
 user wants when first pointing at a repo, once.
 
-**Setup is optional and can come later.** A task runs perfectly well
-without it. Offer setup when a repo turns out to be worth it - the second
-or third task in - rather than demanding it up front.
+**Setup comes first, and the app asks for it.** A repo tracked for task
+work opens on `Set this repo up` until the document exists, so a session
+that follows the front door arrives here before its first task. Write it
+then rather than deferring it - the app has already asked, and putting it
+off leaves the user looking at the same prompt tomorrow.
 
 ## Two sides
 
