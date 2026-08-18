@@ -4,7 +4,21 @@ import re
 import threading
 from email.message import Message
 
-from throughline import nodes, registry, serve, state
+import pytest
+
+from throughline import agents, nodes, registry, serve, state
+
+
+@pytest.fixture(autouse=True)
+def _an_agent_to_hand_to(monkeypatch):
+    """Every hand-off test needs an agent, and CI has neither.
+
+    Resolution asks the real PATH. Pinning both here keeps the resolution
+    table the only thing that varies; the tests for that table override
+    these deliberately.
+    """
+    monkeypatch.setattr(agents, "chosen", lambda: "claude")
+    monkeypatch.setattr(agents, "installed", lambda: ["claude", "opencode"])
 
 
 def _project(tmp_path, monkeypatch, name="Demo"):
@@ -109,7 +123,7 @@ def test_a_post_from_another_origin_is_refused(tmp_path, monkeypatch):
 
 def test_a_post_from_the_app_itself_is_allowed(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST",
         "/api/start",
@@ -123,7 +137,7 @@ def test_a_post_from_the_app_itself_is_allowed(tmp_path, monkeypatch):
 def test_a_post_with_no_origin_is_allowed(tmp_path, monkeypatch):
     """Nothing sends Origin from a terminal. curl and the CLI still work."""
     repo = _project(tmp_path, monkeypatch)
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST",
         "/api/start",
@@ -441,7 +455,7 @@ def test_start_works_on_a_task_node(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
     slug = tasks.create(repo, "Fix it")
     calls = []
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append(p))
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(p))
 
     response = serve.route(
         "POST",
@@ -456,7 +470,7 @@ def test_start_works_on_a_task_node(tmp_path, monkeypatch):
 
 def test_start_refuses_an_unknown_task(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST",
         "/api/start",
@@ -470,7 +484,7 @@ def test_start_spawns_claude_in_the_repo(tmp_path, monkeypatch):
     """The one action the app exists to make cheap."""
     repo = _project(tmp_path, monkeypatch)
     calls = []
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append((r, p)))
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append((r, p)))
 
     response = serve.route(
         "POST", "/api/start", {"repo": str(repo), "node": "problem-statement"}, b""
@@ -484,7 +498,7 @@ def test_start_refuses_an_untracked_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
     stranger = tmp_path / "stranger"
     stranger.mkdir()
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST", "/api/start", {"repo": str(stranger), "node": "x"}, b""
     )
@@ -494,7 +508,7 @@ def test_start_refuses_an_untracked_repo(tmp_path, monkeypatch):
 def test_start_refuses_an_unknown_node(tmp_path, monkeypatch):
     """The node id reaches a shell, so it is checked against the graph."""
     repo = _project(tmp_path, monkeypatch)
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST", "/api/start", {"repo": str(repo), "node": "rm -rf /"}, b""
     )
@@ -504,10 +518,10 @@ def test_start_refuses_an_unknown_node(tmp_path, monkeypatch):
 def test_start_reports_when_claude_is_missing(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
 
-    def boom(_repo, _prompt):
+    def boom(_repo, _prompt, _name):
         raise FileNotFoundError("claude")
 
-    monkeypatch.setattr(serve, "spawn_claude", boom)
+    monkeypatch.setattr(serve, "spawn_agent", boom)
     response = serve.route(
         "POST", "/api/start", {"repo": str(repo), "node": "problem-statement"}, b""
     )
@@ -1075,7 +1089,7 @@ def test_a_repo_can_be_handed_over_for_setup(tmp_path, monkeypatch):
     """
     repo = _project(tmp_path, monkeypatch)
     calls = []
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append((r, p)))
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append((r, p)))
 
     response = serve.route(
         "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
@@ -1089,7 +1103,7 @@ def test_asking_for_a_node_and_setup_at_once_is_refused(tmp_path, monkeypatch):
     """Two different hand-offs, and guessing between them would be worse."""
     repo = _project(tmp_path, monkeypatch)
     calls = []
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append(p))
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(p))
     response = serve.route(
         "POST",
         "/api/start",
@@ -1104,7 +1118,7 @@ def test_setup_still_refuses_an_untracked_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
     stranger = tmp_path / "stranger"
     stranger.mkdir()
-    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
     response = serve.route(
         "POST", "/api/start", {"repo": str(stranger), "setup": "1"}, b""
     )
@@ -1114,10 +1128,10 @@ def test_setup_still_refuses_an_untracked_repo(tmp_path, monkeypatch):
 def test_setup_reports_when_claude_is_missing(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
 
-    def boom(_repo, _prompt):
+    def boom(_repo, _prompt, _name):
         raise FileNotFoundError("claude")
 
-    monkeypatch.setattr(serve, "spawn_claude", boom)
+    monkeypatch.setattr(serve, "spawn_agent", boom)
     response = serve.route(
         "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
     )
@@ -1200,3 +1214,86 @@ def test_a_started_task_is_immediately_the_next_thing(tmp_path, monkeypatch):
     payload = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
     assert payload["task"]
     assert payload["next"] == "understand"
+
+
+def test_a_stored_agent_is_used(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(agents, "chosen", lambda: "opencode")
+    monkeypatch.setattr(agents, "installed", lambda: ["claude", "opencode"])
+    calls = []
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(n))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 200
+    assert calls == ["opencode"]
+    assert _json(response)["agent"] == "opencode"
+
+
+def test_a_stored_agent_that_is_gone_says_where_to_change_it(tmp_path, monkeypatch):
+    """'Not found' with nowhere to go is a dead end, not an error."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(agents, "chosen", lambda: "opencode")
+    monkeypatch.setattr(agents, "installed", lambda: ["claude"])
+    calls = []
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(n))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 500
+    error = _json(response)["error"]
+    assert "opencode" in error
+    assert str(agents.setting_path()) in error
+    assert calls == []
+
+
+def test_the_only_installed_agent_is_used_and_remembered(tmp_path, monkeypatch):
+    """One agent on the machine is not a decision worth interrupting for."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(agents, "chosen", lambda: None)
+    monkeypatch.setattr(agents, "installed", lambda: ["opencode"])
+    calls = []
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(n))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 200
+    assert calls == ["opencode"]
+    stored = tmp_path / "home" / "agent"
+    assert stored.read_text(encoding="utf-8").strip() == "opencode"
+
+
+def test_both_installed_and_nothing_chosen_asks(tmp_path, monkeypatch):
+    """Guessing would open a session under an agent nobody picked."""
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(agents, "chosen", lambda: None)
+    monkeypatch.setattr(agents, "installed", lambda: ["claude", "opencode"])
+    calls = []
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: calls.append(n))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 409
+    assert _json(response)["choose"] == ["claude", "opencode"]
+    assert calls == []
+
+
+def test_no_agent_at_all_names_both(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    monkeypatch.setattr(agents, "chosen", lambda: None)
+    monkeypatch.setattr(agents, "installed", lambda: [])
+    # Stubbed even though resolution should refuse first: without it, a
+    # regression here opens a real console on whoever runs the tests.
+    monkeypatch.setattr(serve, "spawn_agent", lambda r, p, n: None)
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 500
+    error = _json(response)["error"].lower()
+    assert "claude" in error
+    assert "opencode" in error

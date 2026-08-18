@@ -11,6 +11,7 @@ CLI, it has been implemented twice and one copy will drift.
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import artifacts
 from . import nodes as nodes_module
-from . import gaps, hashing, registry, setup, tasks
+from . import agents, gaps, hashing, registry, setup, tasks
 from . import state as state_module
 
 ASSETS = Path(__file__).parent / "app"
@@ -414,19 +415,45 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     )
 
 
-def spawn_claude(repo: Path, prompt: str) -> None:
-    """Open a Claude session in the repo, already asking for the node.
+def spawn_agent(repo: Path, prompt: str, name: str) -> None:
+    """Open an agent session in the repo, already asking for the node.
 
     A new console rather than a child of the server: the session outlives
     the app, and closing the app must never kill work in progress.
     """
+    argv, extra = agents.command(name, prompt)
     creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
     subprocess.Popen(
-        ["claude", prompt],
+        argv,
         cwd=str(repo),
         creationflags=creation,
         shell=False,
+        env={**os.environ, **extra} if extra else None,
     )
+
+
+def _resolve_agent() -> tuple[str | None, Response | None]:
+    """Which agent to hand to, or the response saying why there isn't one.
+
+    Exactly one of the two is not None. The 409 is the only branch that
+    asks the user anything, and it exists because picking a winner would
+    open a session in someone's repo under an agent they never chose.
+    """
+    name = agents.chosen()
+    available = agents.installed()
+    if name is not None:
+        if name not in available:
+            return None, _error(
+                500,
+                f"{name} was not found on PATH - "
+                f"change it in {agents.setting_path()}",
+            )
+        return name, None
+    if not available:
+        return None, _error(500, "neither claude nor opencode was found on PATH")
+    if len(available) == 1:
+        return agents.choose(available[0]), None
+    return None, _json_response({"choose": available}, 409)
 
 
 def _post_start(query: dict) -> Response:
@@ -472,13 +499,17 @@ def _post_start(query: dict) -> Response:
         prompt = f"Use the throughline skill and work the {node.id} node."
         started = {"node": node.id, "started": True}
 
+    name, failure = _resolve_agent()
+    if failure is not None:
+        return failure
+
     try:
-        spawn_claude(repo, prompt)
+        spawn_agent(repo, prompt, name)
     except FileNotFoundError:
-        return _error(500, "claude was not found on PATH")
+        return _error(500, f"{name} was not found on PATH")
     except OSError as err:
-        return _error(500, f"could not start claude: {err}")
-    return _json_response(started)
+        return _error(500, f"could not start {name}: {err}")
+    return _json_response({**started, "agent": name})
 
 
 def _asset(name: str, content_type: str) -> Response:
