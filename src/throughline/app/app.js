@@ -31,7 +31,6 @@ const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "adding
  * back to its own name rather than disappearing. */
 const FLAG_WORDS = {
   has_db: "Database",
-  has_ui: "User interface",
   has_state: "State",
   multi_service: "Multiple services",
 };
@@ -510,7 +509,12 @@ async function showArtifact(nodeId, slug = null, record = true) {
   const node = slug ? { title: titleOf(nodeId), phase: "task", status: data ? "current" : "empty" } : nodeById(nodeId);
   const title = node ? node.title : nodeId;
 
-  el("doc-kicker").textContent = slug ? `Task · ${title}` : `${node.phase} · ${title}`;
+  /* A node id outlives the project it came from. View a flag-gated node,
+   * switch to a repo where that flag is off, press Back, and the stored
+   * id lands here with nothing in the active list to match it. Nothing
+   * about that is fatal - the artifact either exists or it does not. */
+  const kicker = slug ? "Task" : node ? node.phase : "not in this project";
+  el("doc-kicker").textContent = `${kicker} · ${title}`;
   el("doc-title").textContent = title;
 
   const status = node ? node.status : "empty";
@@ -572,6 +576,30 @@ async function drawStale(nodeId, slug) {
 }
 
 el("dismiss-stale").onclick = () => { el("stale-note").hidden = true; };
+
+/* Confirming is where a document stops being the agent's guess and
+ * becomes its owner's. The app is where a draft is actually read, so it
+ * is the only sensible place to say so - the note stated the problem and
+ * then offered nothing that resolved it. */
+el("confirm-draft").onclick = async (event) => {
+  const button = event.currentTarget;
+  const query = new URLSearchParams({ repo: project.path, node: openNode });
+  button.disabled = true;
+  const response = await fetch(`/api/confirm?${query}`, { method: "POST" });
+  button.disabled = false;
+
+  if (!response.ok) {
+    el("drafted-text").textContent = await said(response);
+    return;
+  }
+  el("drafted-note").hidden = true;
+  // The map and the front door both read node status from here, so this
+  // has to be refreshed - but not through refresh(), which shows the
+  // front door. Being thrown off the document you just confirmed is not
+  // what confirming it asked for.
+  const fresh = await api(`/api/project?repo=${encodeURIComponent(project.path)}`);
+  if (fresh) project = fresh;
+};
 
 async function drawGaps(nodeId, slug) {
   const box = el("gaps");
