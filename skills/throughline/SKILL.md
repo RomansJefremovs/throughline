@@ -17,9 +17,10 @@ These come from the design spec. Violating one breaks the tool for its user.
    one next action. Exactly one.
 2. **Never hand over a document to review.** Ask one question at a time.
    The artifact accretes from the answers.
-3. **Every question goes through the interactive picker.** Use the
-   `AskUserQuestion` tool - never ask by writing options as prose. The
-   user picks; they do not compose. See "Asking a question" below.
+3. **Every question goes through the interactive picker.** Use
+   `AskUserQuestion` under Claude Code, or the `question` tool under
+   opencode - never ask by writing options as prose. The user picks;
+   they do not compose. See "Asking a question" below.
 4. **Save every answer immediately** with `throughline answer`. Never
    batch answers to the end of an interview.
 5. **Never broadcast staleness.** No counts, no badges, no red. Mention a
@@ -36,6 +37,9 @@ One `AskUserQuestion` call per question. Never batch several questions
 into one call - the point is that the user faces one decision at a time.
 
 - **2 to 4 options.** Fewer, sharper options beat a wide menu.
+- **Keep `header` to 12 characters.** opencode allows 30 and Claude Code
+  allows 12, so writing to the shorter limit means a question works under
+  either without being rewritten.
 - **The recommended option goes first**, labelled `(Recommended)`.
 - **Each option's description says what choosing it commits to** - the
   consequence, not a restatement of the label.
