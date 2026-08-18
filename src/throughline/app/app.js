@@ -289,6 +289,30 @@ function drawSwitcher() {
   more.innerHTML = "<span>+ Add a project…</span>";
   more.onclick = () => { el("switcher").hidden = true; openAdd(); };
   box.appendChild(more);
+
+  /* The agent applies to every project, so it belongs beside the list of
+   * them rather than inside any one. Named, not hidden behind a gear. */
+  const who = document.createElement("button");
+  who.className = "sw-row sw-agent";
+  who.innerHTML = `<span>Agent</span><span class="tag">${esc(agentLabel())}</span>`;
+  who.onclick = async () => {
+    el("switcher").hidden = true;
+    if (await pickAgent()) redrawForAgent();
+  };
+  box.appendChild(who);
+}
+
+/* Every place the agent is named, after it changes. */
+function redrawForAgent() {
+  if (project) drawFront();
+  if (openNode) {
+    const start = el("doc-start");
+    if (!el("doc-empty").hidden) {
+      start.textContent = start.textContent.startsWith("Continue")
+        ? `Continue — hands to ${agentLabel()}`
+        : `Start — hands to ${agentLabel()}`;
+    }
+  }
 }
 
 el("go-front").onclick = () => goTo("front");
@@ -888,18 +912,35 @@ async function drawSetup() {
 
 /* Handing off ----------------------------------------------------- */
 
-/* The server refuses to guess when both agents are installed. The choice
- * is made here, once, and storing it is what stops this appearing again. */
+/* The server refuses to guess when both agents are installed, so the
+ * choice is made here and stored. Also opened deliberately from the
+ * switcher - a decision you can only make once is a trap, not a default.
+ *
+ * Resolves to the chosen name, or null if it was dismissed. */
 function pickAgent() {
   return new Promise((resolve) => {
     const dialog = el("pick-agent");
+    // Which one is live right now, so opening this on purpose shows you
+    // where you are rather than asking you to remember.
+    el("pick-claude").className = agent === "claude" ? "solid" : "hollow";
+    el("pick-opencode").className = agent === "opencode" ? "solid" : "hollow";
     dialog.hidden = false;
-    const pick = async (name) => {
+
+    const close = (name) => {
       dialog.hidden = true;
-      await fetch(`/api/agent?name=${name}`, { method: "POST" });
-      agent = name;
+      document.removeEventListener("keydown", onKey);
       resolve(name);
     };
+    const onKey = (event) => {
+      if (event.key === "Escape") close(null);
+    };
+    const pick = async (name) => {
+      await fetch(`/api/agent?name=${name}`, { method: "POST" });
+      agent = name;
+      close(name);
+    };
+
+    document.addEventListener("keydown", onKey);
     el("pick-claude").onclick = () => pick("claude");
     el("pick-opencode").onclick = () => pick("opencode");
   });
@@ -919,7 +960,12 @@ async function handOff(button, query) {
   const send = () => fetch(`/api/start?${query}`, { method: "POST" });
   let response = await send();
   if (response.status === 409) {
-    await pickAgent();
+    // Dismissed without choosing: nothing was asked for, so nothing opens.
+    if (!(await pickAgent())) {
+      button.disabled = false;
+      button.textContent = label;
+      return;
+    }
     button.textContent = `Opening ${agentLabel()}…`;
     response = await send();
   }

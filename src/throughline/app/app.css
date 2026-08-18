@@ -518,3 +518,6 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 #add-flags { display: flex; flex-direction: column; gap: 8px; }
 
 .sw-add { color: var(--accent-text); font-weight: 800; }
+
+/* The agent is not a project. A rule says so without needing a heading. */
+.sw-agent { border-top: 2px solid var(--divider); }
