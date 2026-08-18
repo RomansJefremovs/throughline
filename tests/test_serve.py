@@ -1035,3 +1035,33 @@ def test_a_json_array_body_is_refused_rather_than_crashing(tmp_path, monkeypatch
     monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
     response = serve.route("POST", "/api/init", {}, b"[]")
     assert response.status == 400
+
+
+def test_the_project_says_whether_setup_has_been_written(tmp_path, monkeypatch):
+    """The front door picks between two actions on this one fact.
+
+    A property of the repo, like task_only - never a count of what is
+    owed. It says a document exists; it never says one is missing.
+    """
+    from throughline import setup as setup_module
+
+    repo = _project(tmp_path, monkeypatch)
+    first = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert first["has_setup"] is False
+
+    setup_module.write(repo, "A Vue client app.", "What this is.")
+    second = _json(serve.route("GET", "/api/project", {"repo": str(repo)}, b""))
+    assert second["has_setup"] is True
+
+
+def test_knowing_about_setup_adds_no_count_of_outstanding_work(tmp_path, monkeypatch):
+    """has_setup must not become a back door for rule 9."""
+    repo = _project(tmp_path, monkeypatch)
+    body = (
+        serve.route("GET", "/api/project", {"repo": str(repo)}, b"")
+        .body.decode("utf-8")
+        .lower()
+    )
+    assert "remaining" not in body
+    assert "outstanding" not in body
+    assert "todo" not in body

@@ -204,6 +204,11 @@ def _get_project(query: dict) -> Response:
     # is empty, so the repo kind travels with it.
     payload["task_only"] = loaded.task_only
     payload["target_side"] = loaded.target_side
+    # The front door has to choose between naming setup and naming a task,
+    # so it needs to know which of them is missing. A fact about the repo,
+    # like task_only above it - it says a document exists, and never that
+    # one is owed.
+    payload["has_setup"] = setup.setup_path(repo).is_file()
     payload["nodes"] = [] if loaded.task_only else _nodes_payload(repo)
     return _json_response(payload)
 
