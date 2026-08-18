@@ -81,7 +81,7 @@
       </div>
       <h2 id="doc-title"></h2>
 
-      <div id="drafted-note" class="note tint" hidden>Drafted by Claude &mdash; not yet read.</div>
+      <div id="drafted-note" class="note tint" hidden>Drafted &mdash; not yet read.</div>
       <div id="stale-note" class="note edge" hidden>
         <span id="stale-text"></span>
         <button id="dismiss-stale" class="linkish">OK</button>
@@ -210,6 +210,17 @@
     <div class="row">
       <button id="keep-mine" class="solid">Keep what I typed</button>
       <button id="take-theirs" class="hollow">Load the newer version</button>
+    </div>
+  </div>
+</div>
+
+<div id="pick-agent" class="scrim" hidden>
+  <div class="modal">
+    <h3>Which agent should do the work?</h3>
+    <p>Both are installed. This is remembered, so you are only asked once.</p>
+    <div class="row">
+      <button id="pick-claude" class="solid">Claude Code</button>
+      <button id="pick-opencode" class="hollow">opencode</button>
     </div>
   </div>
 </div>

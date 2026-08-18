@@ -17,6 +17,12 @@ const LEAD = {
   in_progress: "Continue →",
 };
 
+/* Which agent the hand-off opens. The server decides; this is only what
+ * the buttons are allowed to say. */
+const AGENT_LABELS = { claude: "Claude", opencode: "opencode" };
+let agent = "claude";
+const agentLabel = () => AGENT_LABELS[agent] || agent;
+
 const el = (id) => document.getElementById(id);
 const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "adding", "starting", "failure"];
 
@@ -306,7 +312,7 @@ function drawFront() {
     const verb = project.task ? "Continue" : "Next";
     action.hidden = false;
     action.textContent = `${verb}: ${project.next_title}`;
-    sub.textContent = `→ opens Claude in ${project.name}/`;
+    sub.textContent = `→ opens ${agentLabel()} in ${project.name}/`;
     return;
   }
 
@@ -317,7 +323,7 @@ function drawFront() {
    * screen which must always name something to do naming nothing. */
   if (project.task_only && !project.has_setup) {
     el("front-setup").hidden = false;
-    sub.textContent = `→ opens Claude in ${project.name}/`;
+    sub.textContent = `→ opens ${agentLabel()} in ${project.name}/`;
   } else if (project.task_only) {
     el("front-start").hidden = false;
     sub.textContent = "A task is four short nodes, start to verified.";
@@ -417,7 +423,9 @@ async function showArtifact(nodeId, slug = null, record = true) {
   if (unwritten) {
     const mid = status === "in_progress";
     el("doc-empty-text").textContent = mid ? "Mid-interview." : "Not started yet.";
-    el("doc-start").textContent = mid ? "Continue — hands to Claude" : "Start — hands to Claude";
+    el("doc-start").textContent = mid
+      ? `Continue — hands to ${agentLabel()}`
+      : `Start — hands to ${agentLabel()}`;
     el("gaps").hidden = true;
     el("drafted-note").hidden = true;
     el("stale-note").hidden = true;
@@ -784,8 +792,8 @@ el("task-cancel").onclick = async () => {
   else show("front");
 };
 
-/* Created here rather than handed to Claude: a title is one line off a
- * ticket, not an interview. The work that follows is still Claude's - the
+/* Created here rather than handed over: a title is one line off a
+ * ticket, not an interview. The work that follows is still the agent's - the
  * front door names it the moment this returns. */
 async function submitTask() {
   const title = el("task-title").value.trim();
@@ -880,21 +888,47 @@ async function drawSetup() {
 
 /* Handing off ----------------------------------------------------- */
 
-async function startNode(nodeId, button, slug = null) {
-  if (!nodeId) return;
+/* The server refuses to guess when both agents are installed. The choice
+ * is made here, once, and storing it is what stops this appearing again. */
+function pickAgent() {
+  return new Promise((resolve) => {
+    const dialog = el("pick-agent");
+    dialog.hidden = false;
+    const pick = async (name) => {
+      dialog.hidden = true;
+      await fetch(`/api/agent?name=${name}`, { method: "POST" });
+      agent = name;
+      resolve(name);
+    };
+    el("pick-claude").onclick = () => pick("claude");
+    el("pick-opencode").onclick = () => pick("opencode");
+  });
+}
+
+/* One hand-off, two callers. The 409 retry lives here rather than in
+ * both, because a dialog that only appears in one of them is the kind of
+ * thing nobody notices until it matters.
+ *
+ * A new console that outlives the app, and a button that says what
+ * happened for long enough to read. */
+async function handOff(button, query) {
   const label = button.textContent;
   button.disabled = true;
-  button.textContent = "Opening Claude…";
+  button.textContent = `Opening ${agentLabel()}…`;
 
-  const query = new URLSearchParams({ repo: project.path, node: nodeId });
-  if (slug) query.set("slug", slug);
-  const response = await fetch(`/api/start?${query}`, { method: "POST" });
+  const send = () => fetch(`/api/start?${query}`, { method: "POST" });
+  let response = await send();
+  if (response.status === 409) {
+    await pickAgent();
+    button.textContent = `Opening ${agentLabel()}…`;
+    response = await send();
+  }
 
   if (response.ok) {
-    button.textContent = "Opened in Claude";
+    button.textContent = `Opened in ${agentLabel()}`;
   } else {
     const problem = await response.json().catch(() => ({}));
-    button.textContent = problem.error || "Could not open Claude";
+    button.textContent = problem.error || `Could not open ${agentLabel()}`;
   }
   setTimeout(() => {
     button.disabled = false;
@@ -902,26 +936,18 @@ async function startNode(nodeId, button, slug = null) {
   }, 4000);
 }
 
-/* Setup is handed over exactly as a node is - a new console that outlives
- * the app, and a button that says what happened for long enough to read. */
+async function startNode(nodeId, button, slug = null) {
+  if (!nodeId) return;
+  const query = new URLSearchParams({ repo: project.path, node: nodeId });
+  if (slug) query.set("slug", slug);
+  await handOff(button, query);
+}
+
 async function startSetup(button) {
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = "Opening Claude…";
-
-  const query = new URLSearchParams({ repo: project.path, setup: "1" });
-  const response = await fetch(`/api/start?${query}`, { method: "POST" });
-
-  if (response.ok) {
-    button.textContent = "Opened in Claude";
-  } else {
-    const problem = await response.json().catch(() => ({}));
-    button.textContent = problem.error || "Could not open Claude";
-  }
-  setTimeout(() => {
-    button.disabled = false;
-    button.textContent = label;
-  }, 4000);
+  await handOff(
+    button,
+    new URLSearchParams({ repo: project.path, setup: "1" })
+  );
 }
 
 el("front-setup").onclick = (event) => startSetup(event.currentTarget);
@@ -965,6 +991,8 @@ async function start() {
   try {
     const home = await api("/api/home");
     projects = (await api("/api/projects")) || [];
+    const picked = await api("/api/agent");
+    if (picked && picked.chosen) agent = picked.chosen;
     if (!home || !home.path) {
       el("front-project").textContent = "No projects yet";
       el("front-reminder").textContent =
