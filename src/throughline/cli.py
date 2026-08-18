@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import artifacts, context, hashing, nodes as nodes_module, scan as scan_module
 from . import agents as agents_module
+from . import skill as skill_module
 from . import gaps, registry, serve, setup, tasks
 from . import state as state_module
 from . import status as status_module
@@ -84,6 +85,22 @@ def cmd_agent(args) -> int:
         f"agent: {chosen or 'not chosen'}\n"
         f"installed: {', '.join(installed) or 'none'}",
     )
+    return 0
+
+
+def cmd_skill(args) -> int:
+    result = skill_module.install(force=args.force)
+    if result["written"]:
+        text = f"installed the skill to {result['path']}"
+    elif result["differs"]:
+        text = (
+            f"{result['path']} differs from the bundled skill and was left "
+            f"alone: {', '.join(result['differs'])}"
+            "\nrun `throughline skill install --force` to replace it"
+        )
+    else:
+        text = f"already installed at {result['path']}"
+    _emit(result, args.json, text)
     return 0
 
 
@@ -485,6 +502,10 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument("--summary", required=True)
     setup_cmd.add_argument("--body")
     setup_cmd.add_argument("--body-file")
+
+    skill_cmd = add("skill", cmd_skill, "install the skill where agents look")
+    skill_cmd.add_argument("action", choices=["install"])
+    skill_cmd.add_argument("--force", action="store_true")
 
     agent = add("agent", cmd_agent, "which agent gets handed the work")
     agent.add_argument("name", nargs="?", choices=sorted(agents_module.AGENTS))

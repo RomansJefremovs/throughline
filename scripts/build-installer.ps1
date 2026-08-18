@@ -28,6 +28,7 @@ python -m PyInstaller `
     --name throughline `
     --paths (Join-Path $root "src") `
     --add-data "$(Join-Path $root 'src\throughline\app');throughline/app" `
+    --add-data "$(Join-Path $root 'skills\throughline');throughline/skill" `
     --distpath (Join-Path $root "build\sidecar\dist") `
     --workpath (Join-Path $root "build\sidecar\work") `
     --specpath (Join-Path $root "build\sidecar") `
