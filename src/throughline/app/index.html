@@ -52,6 +52,8 @@
       <p class="reminder" id="front-reminder"></p>
       <button id="front-action" class="hero"></button>
       <button id="front-add" class="hero" hidden>Add a project &rarr;</button>
+      <button id="front-setup" class="hero" hidden>Set this repo up &rarr;</button>
+      <button id="front-start" class="hero" hidden>Start a task &rarr;</button>
       <p class="sub" id="front-sub"></p>
     </section>
 
@@ -69,6 +71,7 @@
       <p class="kicker">Setup &mdash; task work only</p>
       <h2 id="setup-title"></h2>
       <div id="setup-body"></div>
+      <button id="setup-action" class="solid" hidden>Set this repo up &rarr;</button>
     </section>
 
     <section id="reading" class="screen prose" hidden>
@@ -159,6 +162,30 @@
       <div class="row">
         <button id="add-submit" class="solid">Add project</button>
         <button id="add-cancel" class="hollow">Cancel</button>
+      </div>
+    </section>
+
+    <section id="starting" class="screen prose" hidden>
+      <p class="kicker">Start a task</p>
+      <h2 id="start-project"></h2>
+
+      <div class="field">
+        <label class="lbl" for="task-title">Title</label>
+        <input id="task-title" type="text" spellcheck="false"
+               placeholder="Fix VAT on credit notes">
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="task-reference">Reference</label>
+        <input id="task-reference" type="text" spellcheck="false"
+               placeholder="ERP-4821, optional">
+      </div>
+
+      <div id="task-error" class="note edge" hidden></div>
+
+      <div class="row">
+        <button id="task-submit" class="solid">Start task</button>
+        <button id="task-cancel" class="hollow">Cancel</button>
       </div>
     </section>
 

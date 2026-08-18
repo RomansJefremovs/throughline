@@ -18,7 +18,7 @@ const LEAD = {
 };
 
 const el = (id) => document.getElementById(id);
-const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "adding", "failure"];
+const SCREENS = ["front", "map", "setup", "reading", "editing", "tasks", "adding", "starting", "failure"];
 
 /* Human words for the flags. The list itself comes from the server so it
  * cannot drift; only the wording lives here, and an unknown flag falls
@@ -296,6 +296,8 @@ function drawFront() {
   el("front-project").textContent = project.project || project.name;
   el("front-reminder").textContent = project.note || "";
   el("front-add").hidden = true;
+  el("front-setup").hidden = true;
+  el("front-start").hidden = true;
 
   const action = el("front-action");
   const sub = el("front-sub");
@@ -305,11 +307,22 @@ function drawFront() {
     action.hidden = false;
     action.textContent = `${verb}: ${project.next_title}`;
     sub.textContent = `→ opens Claude in ${project.name}/`;
+    return;
+  }
+
+  action.hidden = true;
+
+  /* A task-only repo has no nodes, so `next` stays null until a task
+   * exists - and nothing could create the first one. That left the one
+   * screen which must always name something to do naming nothing. */
+  if (project.task_only && !project.has_setup) {
+    el("front-setup").hidden = false;
+    sub.textContent = `→ opens Claude in ${project.name}/`;
+  } else if (project.task_only) {
+    el("front-start").hidden = false;
+    sub.textContent = "A task is four short nodes, start to verified.";
   } else {
-    action.hidden = true;
-    sub.textContent = project.task_only
-      ? "No task in flight. Start one when a ticket arrives."
-      : "Nothing waiting — every document is written.";
+    sub.textContent = "Nothing waiting — every document is written.";
   }
 }
 
@@ -749,6 +762,68 @@ async function submitAdd() {
 
 el("add-submit").onclick = submitAdd;
 
+/* Starting a task -------------------------------------------------- */
+
+function taskError(text) {
+  const box = el("task-error");
+  box.textContent = text;
+  box.hidden = !text;
+}
+
+function openStart() {
+  el("start-project").textContent = project.project || project.name;
+  el("task-title").value = "";
+  el("task-reference").value = "";
+  taskError("");
+  goTo("starting");
+  el("task-title").focus();
+}
+
+el("task-cancel").onclick = async () => {
+  if (history.length) await goBack();
+  else show("front");
+};
+
+/* Created here rather than handed to Claude: a title is one line off a
+ * ticket, not an interview. The work that follows is still Claude's - the
+ * front door names it the moment this returns. */
+async function submitTask() {
+  const title = el("task-title").value.trim();
+  if (!title) return taskError("Give the task a title.");
+
+  const button = el("task-submit");
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Starting…";
+  taskError("");
+  let started = false;
+
+  try {
+    const query = new URLSearchParams({ repo: project.path, title });
+    const reference = el("task-reference").value.trim();
+    if (reference) query.set("reference", reference);
+
+    const response = await fetch(`/api/task?${query}`, { method: "POST" });
+    if (!response.ok) return taskError(await said(response));
+    started = true;
+    await openProject(project.path);
+  } catch {
+    // Which half failed decides what is true. Saying the task was not
+    // started when it was would send someone off to start it twice.
+    taskError(
+      started
+        ? "The task was started, but the screen could not refresh. Open it from Tasks."
+        : "Throughline did not respond. The task was not started."
+    );
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+el("task-submit").onclick = submitTask;
+el("front-start").onclick = () => openStart();
+
 /* Tasks ----------------------------------------------------------- */
 
 async function drawTasks() {
@@ -799,7 +874,8 @@ async function drawSetup() {
   const data = await api(`/api/setup?repo=${encodeURIComponent(project.path)}`);
   el("setup-body").innerHTML = data
     ? render(data.text)
-    : '<p class="muted">No setup written yet — ask Claude to set this repo up when it earns it.</p>';
+    : '<p class="muted">No setup written yet.</p>';
+  el("setup-action").hidden = !!data;
 }
 
 /* Handing off ----------------------------------------------------- */
@@ -825,6 +901,31 @@ async function startNode(nodeId, button, slug = null) {
     button.textContent = label;
   }, 4000);
 }
+
+/* Setup is handed over exactly as a node is - a new console that outlives
+ * the app, and a button that says what happened for long enough to read. */
+async function startSetup(button) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Opening Claude…";
+
+  const query = new URLSearchParams({ repo: project.path, setup: "1" });
+  const response = await fetch(`/api/start?${query}`, { method: "POST" });
+
+  if (response.ok) {
+    button.textContent = "Opened in Claude";
+  } else {
+    const problem = await response.json().catch(() => ({}));
+    button.textContent = problem.error || "Could not open Claude";
+  }
+  setTimeout(() => {
+    button.disabled = false;
+    button.textContent = label;
+  }, 4000);
+}
+
+el("front-setup").onclick = (event) => startSetup(event.currentTarget);
+el("setup-action").onclick = (event) => startSetup(event.currentTarget);
 
 /* Loading a project ----------------------------------------------- */
 
