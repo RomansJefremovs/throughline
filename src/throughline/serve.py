@@ -415,6 +415,62 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     )
 
 
+def _post_stale(query: dict) -> Response:
+    """Dismiss a stale note by recording the inputs as seen.
+
+    Rule 5 allows one sentence and a one-word way to dismiss it. That
+    word has to mean something: hiding the note and storing nothing
+    brought the same sentence back on the next visit, which is the
+    nagging the rule exists to prevent.
+
+    Dismissed is not silenced. Stamping says "I have seen these inputs",
+    so the next real change to them speaks up again.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    node_id = query.get("node") or ""
+    try:
+        nodes_module.get_node(node_id)
+    except KeyError:
+        return _error(400, "no such node")
+
+    loaded = state_module.load(repo)
+    hashing.stamp(repo, node_id, loaded)
+    state_module.save(repo, loaded)
+    return _json_response({"node": node_id, "stale": False, "changed": []})
+
+
+def _post_target(query: dict) -> Response:
+    """Turn the target side on or off. Mirrors cmd_target.
+
+    Always allowed and always reversible, so there is nothing to confirm
+    and nothing to refuse beyond the repo being tracked.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    result = state_module.set_target_side(repo, bool(query.get("on")))
+    return _json_response({"target_side": result.target_side})
+
+
+def _post_task_status(query: dict, abandon: bool) -> Response:
+    """Abandon a task, or pick it back up. Mirrors the two CLI commands.
+
+    Abandoning is reversible and costs nothing, which is the only reason
+    task status is stored: an abandoned task stops competing for the one
+    next-action slot.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+    slug = query.get("slug") or ""
+    if not tasks.task_path(repo, slug).is_file():
+        return _error(404, "no such task")
+    task = tasks.abandon(repo, slug) if abandon else tasks.reopen(repo, slug)
+    return _json_response({"slug": slug, "status": task.status})
+
+
 def _post_confirm(query: dict) -> Response:
     """Promote a drafted node to current. Mirrors cmd_confirm.
 
@@ -704,6 +760,14 @@ def route(
         return _post_agent(query)
     if method == "POST" and path == "/api/confirm":
         return _post_confirm(query)
+    if method == "POST" and path == "/api/stale":
+        return _post_stale(query)
+    if method == "POST" and path == "/api/target":
+        return _post_target(query)
+    if method == "POST" and path == "/api/abandon":
+        return _post_task_status(query, abandon=True)
+    if method == "POST" and path == "/api/reopen":
+        return _post_task_status(query, abandon=False)
     if method == "POST" and path == "/api/forget":
         return _post_forget(query)
     if method == "POST" and path == "/api/add":

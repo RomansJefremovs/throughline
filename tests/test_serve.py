@@ -6,7 +6,7 @@ from email.message import Message
 
 import pytest
 
-from throughline import agents, artifacts, nodes, registry, serve, skill, state
+from throughline import agents, artifacts, hashing, nodes, registry, serve, skill, state, tasks
 
 
 @pytest.fixture(autouse=True)
@@ -1500,3 +1500,94 @@ def test_confirming_refuses_another_origin(tmp_path, monkeypatch):
     )
     assert response.status == 403
     assert state.load(repo).nodes["problem-statement"].status == "drafted"
+
+
+def _stale_node(tmp_path, monkeypatch):
+    """A repo where architecture's inputs have moved since it was written."""
+    repo = _project(tmp_path, monkeypatch)
+    # architecture depends on functional-requirements and domain-model.
+    for node in ("functional-requirements", "domain-model", "architecture"):
+        artifacts.write_artifact(repo, node, "first", "s")
+    loaded = state.load(repo)
+    hashing.stamp(repo, "architecture", loaded)
+    state.save(repo, loaded)
+    artifacts.write_artifact(repo, "functional-requirements", "changed since", "s")
+    return repo
+
+
+def test_dismissing_staleness_stops_it_being_reported(tmp_path, monkeypatch):
+    """Rule 5 gives one sentence and a one-word way to dismiss it.
+
+    Dismissing means "I have seen these inputs", so it records them -
+    hiding a div and storing nothing made the dismissal theatre, and the
+    same sentence came back on the next visit.
+    """
+    repo = _stale_node(tmp_path, monkeypatch)
+    before = _json(serve.route("GET", "/api/stale", {"repo": str(repo), "node": "architecture"}, b""))
+    assert before["stale"] is True
+
+    response = serve.route("POST", "/api/stale", {"repo": str(repo), "node": "architecture"}, b"")
+    assert response.status == 200
+
+    after = _json(serve.route("GET", "/api/stale", {"repo": str(repo), "node": "architecture"}, b""))
+    assert after["stale"] is False
+
+
+def test_dismissing_staleness_returns_when_the_input_moves_again(tmp_path, monkeypatch):
+    """Dismissed is not silenced. The next real change speaks up."""
+    repo = _stale_node(tmp_path, monkeypatch)
+    serve.route("POST", "/api/stale", {"repo": str(repo), "node": "architecture"}, b"")
+    artifacts.write_artifact(repo, "functional-requirements", "changed yet again", "s")
+
+    after = _json(serve.route("GET", "/api/stale", {"repo": str(repo), "node": "architecture"}, b""))
+    assert after["stale"] is True
+
+
+def test_the_target_side_can_be_switched(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    assert state.load(repo).target_side is False
+
+    on = serve.route("POST", "/api/target", {"repo": str(repo), "on": "1"}, b"")
+    assert on.status == 200
+    assert _json(on)["target_side"] is True
+    assert state.load(repo).target_side is True
+
+    off = serve.route("POST", "/api/target", {"repo": str(repo)}, b"")
+    assert off.status == 200
+    assert _json(off)["target_side"] is False
+    assert state.load(repo).target_side is False
+
+
+def test_a_task_can_be_abandoned_and_reopened(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "A thing", origin="ticket", reference="X-1")
+
+    gone = serve.route("POST", "/api/abandon", {"repo": str(repo), "slug": slug}, b"")
+    assert gone.status == 200
+    assert tasks.load(repo, slug).status == "abandoned"
+
+    back = serve.route("POST", "/api/reopen", {"repo": str(repo), "slug": slug}, b"")
+    assert back.status == 200
+    assert tasks.load(repo, slug).status != "abandoned"
+
+
+def test_abandoning_an_unknown_task_is_refused(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    response = serve.route("POST", "/api/abandon", {"repo": str(repo), "slug": "no-such"}, b"")
+    assert response.status == 404
+
+
+def test_the_writing_endpoints_all_refuse_another_origin(tmp_path, monkeypatch):
+    """One place that says every writing route is behind the same guard."""
+    repo = _project(tmp_path, monkeypatch)
+    slug = tasks.create(repo, "A thing", origin="ticket", reference="X-1")
+    foreign = {"Host": "127.0.0.1:7373", "Origin": "http://evil.example"}
+    for path, query in [
+        ("/api/stale", {"repo": str(repo), "node": "architecture"}),
+        ("/api/target", {"repo": str(repo), "on": "1"}),
+        ("/api/abandon", {"repo": str(repo), "slug": slug}),
+        ("/api/reopen", {"repo": str(repo), "slug": slug}),
+    ]:
+        assert serve.route("POST", path, query, b"", foreign).status == 403, path
+    assert state.load(repo).target_side is False
+    assert tasks.load(repo, slug).status != "abandoned"
