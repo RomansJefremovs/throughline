@@ -272,7 +272,7 @@ time, and run `throughline confirm <node>` when they have been through one
 **Never confirm a node on the user's behalf.** Confirming is the moment a
 document stops being yours and becomes theirs.
 
-Intake asks about six questions and must establish `has_db`, `has_ui`,
+Intake asks about six questions and must establish `has_db`,
 `has_state` and `multi_service`. Finish intake by playing back your
 understanding in three or four bullets and correcting it until the user
 says it fits. Do not proceed to any node before that playback is accepted.

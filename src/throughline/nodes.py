@@ -8,7 +8,11 @@ from dataclasses import dataclass
 
 PHASES: tuple[str, ...] = ("problem", "analysis", "design", "code")
 
-FLAGS: tuple[str, ...] = ("has_db", "has_ui", "has_state", "multi_service")
+# Every flag here switches a node on. A flag that gates nothing is a
+# checkbox that quietly does nothing, which is worse than not offering
+# it - has_ui shipped that way and was removed rather than given a node
+# nobody had asked for.
+FLAGS: tuple[str, ...] = ("has_db", "has_state", "multi_service")
 
 ALWAYS = "always"
 FLAG = "flag"
