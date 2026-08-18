@@ -249,6 +249,34 @@ h4 { font-size: 15px; font-weight: 800; margin: 26px 0 8px; }
 
 .hollow:hover { border-color: var(--accent); }
 
+/* Irreversible, and dressed as such. Same weight as .solid so the dialog
+ * stays balanced, but never the accent - the accent means "go on". */
+.danger {
+  font-weight: 800;
+  font-size: 14px;
+  background: #b3261e;
+  color: #fff;
+  border: 0;
+  padding: 12px 22px;
+}
+
+.danger:hover { opacity: .88; }
+
+/* One per switcher row, and quiet until the row is under the cursor.
+ * A delete control that advertises itself gets pressed by accident. */
+.sw-drop {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+  opacity: 0;
+}
+
+.sw-row:hover .sw-drop { opacity: 1; }
+.sw-drop:hover { color: #b3261e; }
+
 .linkish {
   background: none;
   border: 0;

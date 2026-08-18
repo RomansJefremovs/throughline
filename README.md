@@ -211,6 +211,7 @@ disappear quietly.
 | `target on` / `target off` · `gaps` · `promote` | the two sides |
 | `agent` · `skill install` | which agent runs the work, and where its skill lives |
 | `add` · `forget` · `projects` | which repos the app shows |
+| `forget --delete` | untrack **and** delete `docs/project/` — no undo |
 | `serve` | run the local app |
 
 Every command takes `--repo <path>` and `--json`.

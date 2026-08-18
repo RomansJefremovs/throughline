@@ -164,3 +164,58 @@ def test_set_note_records_the_memory_jog(tmp_path):
 def test_utcnow_is_iso_with_z(tmp_path):
     assert state.utcnow().endswith("Z")
     assert "T" in state.utcnow()
+
+
+def test_discard_removes_the_whole_project_directory(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state.init(repo, "Demo", {})
+    (state.project_dir(repo) / "01-problem.md").write_text("mine\n", encoding="utf-8")
+    (state.project_dir(repo) / "tasks" / "a-task").mkdir(parents=True)
+    (state.project_dir(repo) / "tasks" / "a-task" / "01-understand.md").write_text(
+        "x\n", encoding="utf-8"
+    )
+
+    removed = state.discard(repo)
+
+    assert not state.project_dir(repo).exists()
+    assert sorted(removed) == [
+        "01-problem.md",
+        "pipeline.yaml",
+        "tasks/a-task/01-understand.md",
+    ]
+
+
+def test_discard_leaves_the_rest_of_the_repo_alone(tmp_path):
+    """Only what Throughline wrote. The repo is somebody's work."""
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "main.py").write_text("print()\n", encoding="utf-8")
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    (repo / "docs" / "handbook.md").parent.mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "handbook.md").write_text("hand written\n", encoding="utf-8")
+    state.init(repo, "Demo", {})
+
+    state.discard(repo)
+
+    assert (repo / "src" / "main.py").is_file()
+    assert (repo / "README.md").is_file()
+    assert (repo / "docs" / "handbook.md").is_file()
+    assert repo.is_dir()
+
+
+def test_discard_refuses_a_directory_with_no_pipeline_in_it(tmp_path):
+    """Being handed the wrong path must not cost somebody a docs folder.
+
+    A `docs/project` that Throughline never wrote is someone else's
+    directory that happens to share a name.
+    """
+    repo = tmp_path / "repo"
+    stranger = repo / "docs" / "project"
+    stranger.mkdir(parents=True)
+    (stranger / "notes.md").write_text("not ours\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        state.discard(repo)
+
+    assert (stranger / "notes.md").is_file()

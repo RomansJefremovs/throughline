@@ -415,6 +415,28 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     )
 
 
+def _post_forget(query: dict) -> Response:
+    """Stop tracking a repo, and optionally delete what was written in it.
+
+    The tracked check runs first and is what keeps `delete` from reaching
+    any path a caller cares to name. Untracking on its own is free - the
+    registry is a bookmark list - but deleting is not, and there is no
+    undo, so both go through the same allow-list.
+    """
+    repo, failure = _tracked_repo(query)
+    if failure is not None:
+        return failure
+
+    removed: list[str] = []
+    if query.get("delete"):
+        try:
+            removed = state_module.discard(repo)
+        except FileNotFoundError as err:
+            return _error(404, str(err))
+    registry.remove(repo)
+    return _json_response({"path": str(repo), "removed": removed})
+
+
 def _agent_payload() -> Response:
     return _json_response(
         {"chosen": agents.chosen(), "installed": agents.installed()}
@@ -653,6 +675,8 @@ def route(
         return _put_artifact(query, body)
     if method == "POST" and path == "/api/agent":
         return _post_agent(query)
+    if method == "POST" and path == "/api/forget":
+        return _post_forget(query)
     if method == "POST" and path == "/api/add":
         return _post_add(query)
     if method == "POST" and path == "/api/init":

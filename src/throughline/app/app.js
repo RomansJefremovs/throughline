@@ -276,11 +276,38 @@ function drawSwitcher() {
   const box = el("switcher");
   box.innerHTML = "";
   projects.forEach((entry) => {
-    const row = document.createElement("button");
+    const name = entry.project || entry.name;
+    // A div rather than a button, because the delete control is a button
+    // and one cannot live inside the other.
+    const row = document.createElement("div");
     row.className = "sw-row";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
     const tag = entry.missing ? "missing" : entry.task_only ? "task-only" : "";
-    row.innerHTML = `<span>${esc(entry.project || entry.name)}</span><span class="tag">${tag}</span>`;
-    row.onclick = () => openProject(entry.path);
+    row.innerHTML = `<span>${esc(name)}</span><span class="tag">${tag}</span>`;
+
+    const open = () => openProject(entry.path);
+    row.onclick = open;
+    row.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    };
+
+    const drop = document.createElement("button");
+    drop.className = "sw-drop";
+    drop.textContent = "×";
+    drop.title = `Delete ${name}`;
+    drop.setAttribute("aria-label", `Delete ${name}`);
+    drop.onclick = (event) => {
+      // Without this the row underneath opens the project you just asked
+      // to be rid of.
+      event.stopPropagation();
+      el("switcher").hidden = true;
+      confirmDelete(entry);
+    };
+    row.appendChild(drop);
     box.appendChild(row);
   });
 
@@ -300,6 +327,54 @@ function drawSwitcher() {
     if (await pickAgent()) redrawForAgent();
   };
   box.appendChild(who);
+}
+
+/* Deleting is the only thing in this window that cannot be undone, so it
+ * is the only thing that asks first. The path is shown alongside the
+ * name because "Sales" is a label and C:\Dev\Sales is the folder about to
+ * be emptied - and those are not always the same thought.
+ *
+ * The dialog stays open if the server refuses, because a delete that
+ * silently did nothing is worse than one that failed loudly. */
+function confirmDelete(entry) {
+  const name = entry.project || entry.name;
+  const dialog = el("confirm-delete");
+  el("delete-title").textContent = `Delete ${name}?`;
+  el("delete-detail").textContent =
+    "This stops tracking it and deletes its docs/project/ folder, " +
+    "including every document written there. There is no undo.";
+  el("delete-path").textContent = entry.path;
+  dialog.hidden = false;
+
+  const close = () => {
+    dialog.hidden = true;
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (event) => {
+    if (event.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKey);
+  el("delete-cancel").onclick = close;
+
+  el("delete-go").onclick = async () => {
+    el("delete-go").disabled = true;
+    const query = new URLSearchParams({ repo: entry.path, delete: "1" });
+    const response = await fetch(`/api/forget?${query}`, { method: "POST" });
+    el("delete-go").disabled = false;
+
+    if (!response.ok) {
+      el("delete-detail").textContent = await said(response);
+      return;
+    }
+    close();
+    // The screens behind may be showing what was just deleted, and the
+    // back button would try to walk into it.
+    project = null;
+    history = [];
+    future = [];
+    updateChevrons();
+    await start();
+  };
 }
 
 /* Every place the agent is named, after it changes. */

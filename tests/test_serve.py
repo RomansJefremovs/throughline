@@ -1393,3 +1393,56 @@ def test_a_hand_off_leaves_an_installed_skill_alone(tmp_path, monkeypatch):
     assert response.status == 200
     assert _json(response)["skill_installed"] is False
     assert installs == []
+
+
+def test_forgetting_a_project_untracks_it_without_touching_files(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+
+    response = serve.route("POST", "/api/forget", {"repo": str(repo)}, b"")
+    assert response.status == 200
+    assert _json(response)["removed"] == []
+    assert registry.projects() == []
+    assert state.exists(repo)
+
+
+def test_forgetting_with_delete_removes_the_documents(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+    (state.project_dir(repo) / "01-problem.md").write_text("x\n", encoding="utf-8")
+
+    response = serve.route(
+        "POST", "/api/forget", {"repo": str(repo), "delete": "1"}, b""
+    )
+    assert response.status == 200
+    assert _json(response)["removed"] == ["01-problem.md", "pipeline.yaml"]
+    assert not state.project_dir(repo).exists()
+    assert registry.projects() == []
+    assert repo.is_dir()
+
+
+def test_forgetting_refuses_a_repo_that_is_not_tracked(tmp_path, monkeypatch):
+    """Deleting is irreversible, so it only reaches repos the app knows."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    stranger = tmp_path / "stranger"
+    (stranger / "docs" / "project").mkdir(parents=True)
+    (stranger / "docs" / "project" / "notes.md").write_text("x\n", encoding="utf-8")
+
+    response = serve.route(
+        "POST", "/api/forget", {"repo": str(stranger), "delete": "1"}, b""
+    )
+    assert response.status == 403
+    assert (stranger / "docs" / "project" / "notes.md").is_file()
+
+
+def test_forgetting_refuses_another_origin(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+
+    response = serve.route(
+        "POST",
+        "/api/forget",
+        {"repo": str(repo), "delete": "1"},
+        b"",
+        {"Host": "127.0.0.1:7373", "Origin": "http://evil.example"},
+    )
+    assert response.status == 403
+    assert state.exists(repo)
+    assert registry.projects() == [repo.resolve()]

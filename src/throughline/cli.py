@@ -442,9 +442,27 @@ def cmd_add(args) -> int:
 
 
 def cmd_forget(args) -> int:
+    """Stop tracking a repo, and optionally delete what was written in it.
+
+    Forgetting is free: the registry is a bookmark list, and re-adding the
+    folder restores everything. `--delete` is the other thing entirely -
+    it removes docs/project/ from the repo, and there is no undo.
+    """
     repo = Path(args.repo).resolve()
+    removed: list[str] = []
+    if args.delete:
+        try:
+            removed = state_module.discard(repo)
+        except FileNotFoundError as error:
+            print(error)
+            return 1
     registry.remove(repo)
-    _emit({"path": str(repo)}, args.json, f"forgot {repo}")
+    text = f"forgot {repo}"
+    if args.delete:
+        count = len(removed)
+        word = "document" if count == 1 else "documents"
+        text += f" and deleted {count} {word}"
+    _emit({"path": str(repo), "removed": removed}, args.json, text)
     return 0
 
 
@@ -550,7 +568,12 @@ def build_parser() -> argparse.ArgumentParser:
     add("scan", cmd_scan, "gather raw material from an existing repo")
 
     add("add", cmd_add, "track this repo so the app can show it")
-    add("forget", cmd_forget, "stop tracking this repo")
+    forget = add("forget", cmd_forget, "stop tracking this repo")
+    forget.add_argument(
+        "--delete",
+        action="store_true",
+        help="also delete docs/project/ from the repo - there is no undo",
+    )
     add("projects", cmd_projects, "list tracked projects")
 
     serve_cmd = add("serve", cmd_serve, "run the local app")

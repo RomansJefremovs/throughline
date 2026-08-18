@@ -591,3 +591,35 @@ def test_agent_sets_the_choice(tmp_path, monkeypatch, capsys):
     assert code == 0
     assert json.loads(out)["chosen"] == "opencode"
     assert (tmp_path / "home" / "agent").read_text(encoding="utf-8") == "opencode\n"
+
+
+def test_forget_alone_leaves_the_documents_where_they_are(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    state.init(tmp_path, "Demo", {})
+    run(capsys, "add", "--repo", str(tmp_path))
+
+    code, _ = run(capsys, "forget", "--repo", str(tmp_path))
+
+    assert code == 0
+    assert state.exists(tmp_path)
+
+
+def test_forget_delete_removes_the_project_directory(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    state.init(tmp_path, "Demo", {})
+    run(capsys, "add", "--repo", str(tmp_path))
+
+    code, out = run(capsys, "forget", "--repo", str(tmp_path), "--delete", "--json")
+
+    assert code == 0
+    assert not state.project_dir(tmp_path).exists()
+    assert json.loads(out)["removed"] == ["pipeline.yaml"]
+
+
+def test_forget_delete_says_so_when_there_is_no_pipeline(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+
+    code, out = run(capsys, "forget", "--repo", str(tmp_path), "--delete")
+
+    assert code == 1
+    assert "pipeline" in out.lower()

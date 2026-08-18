@@ -4,6 +4,7 @@ This module owns the only machine-written file in the target repo.
 Everything else the pipeline produces is hand-editable markdown.
 """
 
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +69,31 @@ def state_path(repo: Path) -> Path:
 
 def exists(repo: Path) -> bool:
     return state_path(repo).is_file()
+
+
+def discard(repo: Path) -> list[str]:
+    """Delete this repo's project directory, and say what went with it.
+
+    Everything Throughline writes lives under one directory, so removing
+    it is one tree rather than a search - and the rest of the repo is
+    somebody's actual work and is never touched.
+
+    The pipeline file is the proof of ownership. A `docs/project` with no
+    pipeline in it is a directory that happens to share a name, and being
+    handed the wrong path must not cost someone a folder they wrote by
+    hand. Refusing is the only safe answer, because there is no undo.
+    """
+    if not exists(repo):
+        raise FileNotFoundError(f"no pipeline in {project_dir(repo)}")
+
+    directory = project_dir(repo)
+    removed = sorted(
+        path.relative_to(directory).as_posix()
+        for path in directory.rglob("*")
+        if path.is_file()
+    )
+    shutil.rmtree(directory)
+    return removed
 
 
 def init(
