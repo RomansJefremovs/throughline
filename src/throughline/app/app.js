@@ -190,7 +190,6 @@ function setRendered(markdown) {
   el("source").dataset.text = markdown;
   const target = el("rendered");
   target.innerHTML = render(markdown);
-  drawDiagrams(target);
 }
 
 /* Navigation ------------------------------------------------------ */
@@ -418,6 +417,14 @@ async function showArtifact(nodeId, slug = null, record = true) {
 
   if (record) goTo("reading");
   else show("reading");
+
+  /* Diagrams are drawn only once the screen is on.
+   *
+   * Mermaid measures the rendered text to lay a diagram out, and inside a
+   * hidden screen every measurement comes back zero. It reports that as a
+   * syntax error in the diagram - so a timing problem here reads to the
+   * user as a broken document, and they go looking at their own markdown. */
+  if (!unwritten) drawDiagrams(el("rendered"));
 }
 
 function titleOf(nodeId) {
