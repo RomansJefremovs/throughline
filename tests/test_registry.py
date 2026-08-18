@@ -1,3 +1,5 @@
+import os
+
 from throughline import registry, state
 
 
@@ -98,5 +100,13 @@ def test_last_worked_is_the_most_recently_updated_project(tmp_path, monkeypatch)
 
     state.record_answer(older, "problem-statement", "q1", "x")
     state.record_answer(newer, "problem-statement", "q1", "x")
+
+    # Two writes this close together can land on the same mtime - the
+    # clock behind st_mtime is coarser than the writes are - and a tie
+    # goes to whichever came first in the registry. That made this test
+    # fail about one run in three for a reason the product never had.
+    # Stamping both says what the test is actually about.
+    os.utime(state.state_path(older), (1_000_000, 1_000_000))
+    os.utime(state.state_path(newer), (2_000_000, 2_000_000))
 
     assert registry.last_worked() == newer.resolve()
