@@ -412,10 +412,24 @@ def _post_start(query: dict) -> Response:
         return failure
     node_id = query.get("node") or ""
     slug = query.get("slug")
-    # Node ids and slugs are checked against the graph and the filesystem
-    # rather than sanitised. Both reach a process argument, and an
-    # allow-list is the only check that cannot be talked around.
-    if slug:
+    wants_setup = query.get("setup")
+
+    # Two different hand-offs, and one request can only be one of them.
+    # Picking a winner would let a caller's typo quietly open the wrong
+    # session in someone's repo.
+    if wants_setup and node_id:
+        return _error(400, "ask for a node or for setup, not both")
+
+    if wants_setup:
+        # Nothing the caller sent reaches this prompt. Node ids are checked
+        # against the graph because they land in a process argument; here
+        # there is no id to check.
+        prompt = "Use the throughline skill and set this repo up."
+        started = {"setup": True, "started": True}
+    elif slug:
+        # Node ids and slugs are checked against the graph and the
+        # filesystem rather than sanitised. Both reach a process argument,
+        # and an allow-list is the only check that cannot be talked around.
         if not tasks.task_path(repo, slug).is_file():
             return _error(404, "no such task")
         try:
@@ -426,19 +440,22 @@ def _post_start(query: dict) -> Response:
             f"Use the throughline skill and work the {node.id} node "
             f"of task {slug}."
         )
+        started = {"node": node.id, "started": True}
     else:
         try:
             node = nodes_module.get_node(node_id)
         except KeyError:
             return _error(400, "no such node")
         prompt = f"Use the throughline skill and work the {node.id} node."
+        started = {"node": node.id, "started": True}
+
     try:
         spawn_claude(repo, prompt)
     except FileNotFoundError:
         return _error(500, "claude was not found on PATH")
     except OSError as err:
         return _error(500, f"could not start claude: {err}")
-    return _json_response({"node": node.id, "started": True})
+    return _json_response(started)
 
 
 def _asset(name: str, content_type: str) -> Response:

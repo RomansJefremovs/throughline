@@ -1065,3 +1065,61 @@ def test_knowing_about_setup_adds_no_count_of_outstanding_work(tmp_path, monkeyp
     assert "remaining" not in body
     assert "outstanding" not in body
     assert "todo" not in body
+
+
+def test_a_repo_can_be_handed_over_for_setup(tmp_path, monkeypatch):
+    """Setup is a hand-off like any other, so it lives here.
+
+    Unlike a node id, nothing the caller sent reaches this prompt - there
+    is no id to check against the graph because there is no id.
+    """
+    repo = _project(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append((r, p)))
+
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 200
+    assert calls[0][0] == repo.resolve()
+    assert "set this repo up" in calls[0][1].lower()
+
+
+def test_asking_for_a_node_and_setup_at_once_is_refused(tmp_path, monkeypatch):
+    """Two different hand-offs, and guessing between them would be worse."""
+    repo = _project(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: calls.append(p))
+    response = serve.route(
+        "POST",
+        "/api/start",
+        {"repo": str(repo), "setup": "1", "node": "problem-statement"},
+        b"",
+    )
+    assert response.status == 400
+    assert calls == []
+
+
+def test_setup_still_refuses_an_untracked_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    monkeypatch.setattr(serve, "spawn_claude", lambda r, p: None)
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(stranger), "setup": "1"}, b""
+    )
+    assert response.status == 403
+
+
+def test_setup_reports_when_claude_is_missing(tmp_path, monkeypatch):
+    repo = _project(tmp_path, monkeypatch)
+
+    def boom(_repo, _prompt):
+        raise FileNotFoundError("claude")
+
+    monkeypatch.setattr(serve, "spawn_claude", boom)
+    response = serve.route(
+        "POST", "/api/start", {"repo": str(repo), "setup": "1"}, b""
+    )
+    assert response.status == 500
+    assert "claude" in _json(response)["error"].lower()
