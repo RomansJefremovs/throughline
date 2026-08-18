@@ -1297,3 +1297,63 @@ def test_no_agent_at_all_names_both(tmp_path, monkeypatch):
     error = _json(response)["error"].lower()
     assert "claude" in error
     assert "opencode" in error
+
+
+def test_the_agent_endpoint_reports_choice_and_availability(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(agents, "chosen", lambda: "opencode")
+    monkeypatch.setattr(agents, "installed", lambda: ["claude", "opencode"])
+
+    response = serve.route("GET", "/api/agent", {}, b"")
+    assert response.status == 200
+    assert _json(response) == {
+        "chosen": "opencode",
+        "installed": ["claude", "opencode"],
+    }
+
+
+def test_choosing_an_agent_stores_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+
+    response = serve.route("POST", "/api/agent", {"name": "opencode"}, b"")
+    assert response.status == 200
+    stored = tmp_path / "home" / "agent"
+    assert stored.read_text(encoding="utf-8").strip() == "opencode"
+
+
+def test_choosing_an_unknown_agent_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+
+    response = serve.route("POST", "/api/agent", {"name": "cursor"}, b"")
+    assert response.status == 400
+    assert not (tmp_path / "home" / "agent").exists()
+
+
+def test_choosing_an_agent_refuses_another_origin(tmp_path, monkeypatch):
+    """It writes a file, so it is guarded like everything else that does."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+
+    response = serve.route(
+        "POST",
+        "/api/agent",
+        {"name": "opencode"},
+        b"",
+        {"Host": "127.0.0.1:7373", "Origin": "http://evil.example"},
+    )
+    assert response.status == 403
+    assert not (tmp_path / "home" / "agent").exists()
+
+
+def test_choosing_an_agent_refuses_a_foreign_host(tmp_path, monkeypatch):
+    """DNS rebinding reaches loopback carrying someone else's Host."""
+    monkeypatch.setenv("THROUGHLINE_HOME", str(tmp_path / "home"))
+
+    response = serve.route(
+        "POST",
+        "/api/agent",
+        {"name": "opencode"},
+        b"",
+        {"Host": "attacker.example"},
+    )
+    assert response.status == 403
+    assert not (tmp_path / "home" / "agent").exists()

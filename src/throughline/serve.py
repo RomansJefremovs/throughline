@@ -415,6 +415,20 @@ def _put_artifact(query: dict, body: bytes) -> Response:
     )
 
 
+def _agent_payload() -> Response:
+    return _json_response(
+        {"chosen": agents.chosen(), "installed": agents.installed()}
+    )
+
+
+def _post_agent(query: dict) -> Response:
+    try:
+        agents.choose((query.get("name") or "").strip())
+    except ValueError as err:
+        return _error(400, str(err))
+    return _agent_payload()
+
+
 def spawn_agent(repo: Path, prompt: str, name: str) -> None:
     """Open an agent session in the repo, already asking for the node.
 
@@ -609,6 +623,8 @@ def route(
     if method == "GET" and path in ASSET_TYPES:
         name, content_type = ASSET_TYPES[path]
         return _asset(name, content_type)
+    if method == "GET" and path == "/api/agent":
+        return _agent_payload()
     if method == "GET" and path == "/api/home":
         return _get_home()
     if method == "GET" and path == "/api/projects":
@@ -629,6 +645,8 @@ def route(
         return _get_artifact(query)
     if method == "PUT" and path == "/api/artifact":
         return _put_artifact(query, body)
+    if method == "POST" and path == "/api/agent":
+        return _post_agent(query)
     if method == "POST" and path == "/api/add":
         return _post_add(query)
     if method == "POST" and path == "/api/init":
