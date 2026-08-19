@@ -530,6 +530,37 @@ def test_start_reports_when_claude_is_missing(tmp_path, monkeypatch):
     assert "claude" in _json(response)["error"].lower()
 
 
+def test_spawn_agent_strips_pyinstaller_bootloader_variables(tmp_path, monkeypatch):
+    """A frozen sidecar leaks _PYI_* and _MEIPASS into its environment.
+
+    A throughline started from that window would take the onefile child
+    codepath and die on the parent-process security check, so the spawn
+    must hand the console an environment with them removed - while still
+    inheriting everything else and adding the agent's own variables.
+    """
+    monkeypatch.setenv("_PYI_PARENT_PID", "1234")
+    monkeypatch.setenv("_PYI_ARCHIVEFILE_DIR", "C:\\fake\\archive")
+    monkeypatch.setenv("_PYI_UNPACKED_TEMPDIR", "C:\\fake\\temp")
+    monkeypatch.setenv("_MEIPASS", "C:\\fake\\meipass")
+    monkeypatch.setenv("THROUGHLINE_SENTINEL", "kept")
+
+    captured = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        captured.update(kwargs)
+
+    monkeypatch.setattr(serve.subprocess, "Popen", fake_popen)
+
+    serve.spawn_agent(tmp_path, "a prompt", "opencode")
+
+    env = captured["env"]
+    assert not any(k.startswith("_PYI_") for k in env)
+    assert "_MEIPASS" not in env
+    assert env["THROUGHLINE_SENTINEL"] == "kept"
+    assert env["OPENCODE_ENABLE_QUESTION_TOOL"] == "1"
+
+
 def test_artifact_returns_the_markdown(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
     from throughline import artifacts
