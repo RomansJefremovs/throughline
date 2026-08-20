@@ -1622,3 +1622,28 @@ def test_the_writing_endpoints_all_refuse_another_origin(tmp_path, monkeypatch):
         assert serve.route("POST", path, query, b"", foreign).status == 403, path
     assert state.load(repo).target_side is False
     assert tasks.load(repo, slug).status != "abandoned"
+
+
+def test_spawn_agent_strips_them_for_the_agent_with_no_extras(tmp_path, monkeypatch):
+    """claude adds no variables of its own, and is the default agent.
+
+    The code this replaced passed env=None whenever there was nothing to
+    add, so that path inherited the bootloader state in full. Without
+    this the strip can be reverted for claude and every other test still
+    passes - checked by doing exactly that.
+    """
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "C:\fake\_MEI123456")
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("THROUGHLINE_SENTINEL", "kept")
+
+    captured = {}
+    monkeypatch.setattr(
+        serve.subprocess, "Popen", lambda argv, **kw: captured.update(kw)
+    )
+
+    serve.spawn_agent(tmp_path, "a prompt", "claude")
+
+    env = captured["env"]
+    assert env is not None
+    assert not any(k.startswith("_PYI_") for k in env)
+    assert env["THROUGHLINE_SENTINEL"] == "kept"
