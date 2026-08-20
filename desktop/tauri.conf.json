@@ -24,6 +24,11 @@
       "icons/icon.ico"
     ],
     "shortDescription": "The thread through a project, from idea to code",
-    "longDescription": "Throughline keeps the problem, the analysis and the decisions as markdown inside the repository they describe. This window is a viewer and editor over the throughline command line, which does all the work."
+    "longDescription": "Throughline keeps the problem, the analysis and the decisions as markdown inside the repository they describe. This window is a viewer and editor over the throughline command line, which does all the work.",
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    }
   }
 }

@@ -39,6 +39,10 @@ alternative makes the tool go unused.
 It carries its own Python, so the machine needs neither Python nor this
 repository. Windows x64. The installer is unsigned, so SmartScreen will warn.
 
+The installer also puts the `throughline` CLI on your user PATH, so the
+agent flow works in a terminal without a separate install. Open a new
+terminal for it to take effect; uninstalling removes the entry again.
+
 **From source:**
 
 ```bash
