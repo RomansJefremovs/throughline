@@ -1,7 +1,10 @@
 # Telling you a release exists
 
 Date: 2026-08-20
-Status: proposed
+Status: **superseded** by `2026-08-20-updating-itself-design.md`
+
+The reason this stopped short of an auto-updater was wrong, and was checked
+rather than argued. See that document.
 
 ## Why
 

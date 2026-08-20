@@ -328,6 +328,58 @@ function drawSwitcher() {
   box.appendChild(who);
 }
 
+/* Updates ---------------------------------------------------------
+ *
+ * The first thing this tool has ever done over the internet, so it is
+ * kept to the smallest shape that works: ask once at startup, say
+ * nothing whatsoever if anything goes wrong, and never install without
+ * being told to.
+ *
+ * Only the desktop shell can do this - in a browser there is no
+ * updater plugin and nothing to restart - so absence is the normal case
+ * and not an error.
+ */
+let pendingUpdate = null;
+
+async function checkForUpdate() {
+  const api = window.__TAURI__ && window.__TAURI__.updater;
+  if (!api) return;
+  try {
+    const found = await api.check();
+    if (!found || !found.available) return;
+    pendingUpdate = found;
+    el("update-text").textContent = `${found.version} is available.`;
+    el("update-note").hidden = false;
+  } catch (problem) {
+    /* No network, GitHub unreachable, a manifest that has not been
+     * published yet: none of that is the user's problem and none of it
+     * gets a word on the front door. */
+    console.warn("update check skipped:", problem);
+  }
+}
+
+el("update-later").onclick = () => {
+  el("update-note").hidden = true;
+};
+
+el("update-go").onclick = async () => {
+  if (!pendingUpdate) return;
+  el("update-go").disabled = true;
+  el("update-later").disabled = true;
+  el("update-text").textContent = "Downloading…";
+  try {
+    await pendingUpdate.downloadAndInstall();
+    /* Agent consoles are detached on purpose and survive this - the
+     * spawn comment in serve.py is what guarantees it. */
+    await window.__TAURI__.process.relaunch();
+  } catch (problem) {
+    el("update-text").textContent = "Could not install that update.";
+    el("update-go").disabled = false;
+    el("update-later").disabled = false;
+    console.warn("update failed:", problem);
+  }
+};
+
 /* Deleting is the only thing in this window that cannot be undone, so it
  * is the only thing that asks first. The path is shown alongside the
  * name because "Sales" is a label and C:\Dev\Sales is the folder about to
@@ -1221,6 +1273,9 @@ async function start() {
     projects = (await api("/api/projects")) || [];
     const picked = await api("/api/agent");
     if (picked && picked.chosen) agent = picked.chosen;
+    // Deliberately not awaited: a slow or unreachable GitHub must never
+    // hold up the one screen that has to name an action.
+    checkForUpdate();
     if (!home || !home.path) {
       el("front-project").textContent = "No projects yet";
       el("front-reminder").textContent =

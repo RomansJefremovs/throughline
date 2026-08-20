@@ -10,7 +10,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# generate_context! emits code that deserialises the plugins block in
+# tauri.conf.json, so this became a direct dependency the moment the
+# updater got configured there.
+serde_json = "1"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+# Only for the relaunch after an update is installed.
+tauri-plugin-process = "2"
 
 [profile.release]
 strip = true

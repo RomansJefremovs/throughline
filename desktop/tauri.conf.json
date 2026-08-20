@@ -15,8 +15,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "externalBin": ["binaries/throughline"],
+    "targets": [
+      "nsis"
+    ],
+    "externalBin": [
+      "binaries/throughline"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -24,6 +28,15 @@
       "icons/icon.ico"
     ],
     "shortDescription": "The thread through a project, from idea to code",
-    "longDescription": "Throughline keeps the problem, the analysis and the decisions as markdown inside the repository they describe. This window is a viewer and editor over the throughline command line, which does all the work."
+    "longDescription": "Throughline keeps the problem, the analysis and the decisions as markdown inside the repository they describe. This window is a viewer and editor over the throughline command line, which does all the work.",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ2NzlFOEVCRDhFQTNGClJXUS82dGpyNkhsR0FIRnNCR0N4RUJqUGFKb285bUV1MktBSnB2ZGcvY3NoTW8rK1ZXSG1iVHpFCg==",
+      "endpoints": [
+        "https://github.com/RomansJefremovs/throughline/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
