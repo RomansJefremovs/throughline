@@ -539,15 +539,27 @@ def spawn_agent(repo: Path, prompt: str, name: str) -> None:
 
     A new console rather than a child of the server: the session outlives
     the app, and closing the app must never kill work in progress.
+
+    Frozen builds leak PyInstaller's private _PYI_* bootloader variables
+    and _MEIPASS (the onefile unpack directory) into the inherited
+    environment; a throughline started from that console would take the
+    onefile child codepath and die on the parent-process security check.
+    Strip them so the window gets a clean, top-level environment.
     """
     argv, extra = agents.command(name, prompt)
     creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("_PYI_") and k != "_MEIPASS"
+    }
+    env.update(extra)
     subprocess.Popen(
         argv,
         cwd=str(repo),
         creationflags=creation,
         shell=False,
-        env={**os.environ, **extra} if extra else None,
+        env=env,
     )
 
 
