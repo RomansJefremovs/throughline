@@ -530,6 +530,37 @@ def test_start_reports_when_claude_is_missing(tmp_path, monkeypatch):
     assert "claude" in _json(response)["error"].lower()
 
 
+def test_spawn_agent_strips_pyinstaller_bootloader_variables(tmp_path, monkeypatch):
+    """A frozen sidecar leaks _PYI_* and _MEIPASS into its environment.
+
+    A throughline started from that window would take the onefile child
+    codepath and die on the parent-process security check, so the spawn
+    must hand the console an environment with them removed - while still
+    inheriting everything else and adding the agent's own variables.
+    """
+    monkeypatch.setenv("_PYI_PARENT_PID", "1234")
+    monkeypatch.setenv("_PYI_ARCHIVEFILE_DIR", "C:\\fake\\archive")
+    monkeypatch.setenv("_PYI_UNPACKED_TEMPDIR", "C:\\fake\\temp")
+    monkeypatch.setenv("_MEIPASS", "C:\\fake\\meipass")
+    monkeypatch.setenv("THROUGHLINE_SENTINEL", "kept")
+
+    captured = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        captured.update(kwargs)
+
+    monkeypatch.setattr(serve.subprocess, "Popen", fake_popen)
+
+    serve.spawn_agent(tmp_path, "a prompt", "opencode")
+
+    env = captured["env"]
+    assert not any(k.startswith("_PYI_") for k in env)
+    assert "_MEIPASS" not in env
+    assert env["THROUGHLINE_SENTINEL"] == "kept"
+    assert env["OPENCODE_ENABLE_QUESTION_TOOL"] == "1"
+
+
 def test_artifact_returns_the_markdown(tmp_path, monkeypatch):
     repo = _project(tmp_path, monkeypatch)
     from throughline import artifacts
@@ -1591,3 +1622,28 @@ def test_the_writing_endpoints_all_refuse_another_origin(tmp_path, monkeypatch):
         assert serve.route("POST", path, query, b"", foreign).status == 403, path
     assert state.load(repo).target_side is False
     assert tasks.load(repo, slug).status != "abandoned"
+
+
+def test_spawn_agent_strips_them_for_the_agent_with_no_extras(tmp_path, monkeypatch):
+    """claude adds no variables of its own, and is the default agent.
+
+    The code this replaced passed env=None whenever there was nothing to
+    add, so that path inherited the bootloader state in full. Without
+    this the strip can be reverted for claude and every other test still
+    passes - checked by doing exactly that.
+    """
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "C:\fake\_MEI123456")
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("THROUGHLINE_SENTINEL", "kept")
+
+    captured = {}
+    monkeypatch.setattr(
+        serve.subprocess, "Popen", lambda argv, **kw: captured.update(kw)
+    )
+
+    serve.spawn_agent(tmp_path, "a prompt", "claude")
+
+    env = captured["env"]
+    assert env is not None
+    assert not any(k.startswith("_PYI_") for k in env)
+    assert env["THROUGHLINE_SENTINEL"] == "kept"

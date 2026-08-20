@@ -135,6 +135,10 @@ fn show_failure(app: &tauri::AppHandle, message: &str) -> Result<(), Box<dyn Err
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Updates are checked, downloaded and installed by the window,
+        // which asks first. Nothing here decides when.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let (child, url) = match start_sidecar() {
                 Ok(started) => started,

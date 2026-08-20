@@ -62,6 +62,26 @@ Copy-Item (Join-Path $root "build\sidecar\dist\throughline.exe") `
 
 Write-Host "==> bundling the app" -ForegroundColor Cyan
 
+# The updater will not accept an unsigned package, so the key has to be
+# found before a five-minute build rather than after it. This is update
+# signing, not code signing - it proves the package came from whoever
+# holds this key, and has nothing to do with SmartScreen.
+$keyPath = Join-Path $env:USERPROFILE ".throughline\updater.key"
+if (-not (Test-Path $keyPath)) {
+    throw @"
+no updater signing key at $keyPath
+
+Generate one:
+  npx --yes @tauri-apps/cli@^2 signer generate --ci -w "$keyPath"
+
+Then put the public half in desktop\tauri.conf.json under plugins.updater.pubkey.
+A different key than the one already published means installed clients will
+refuse every update, so restore the original from backup rather than making
+a new one.
+"@
+}
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content $keyPath -Raw
+
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 Push-Location (Join-Path $root "desktop")
 try {
@@ -75,5 +95,36 @@ finally {
 $installer = Join-Path $root `
     "desktop\target\release\bundle\nsis\Throughline_${version}_x64-setup.exe"
 if (-not (Test-Path $installer)) { throw "no installer at $installer" }
+
+# The manifest the installed clients poll. It is published as a release
+# asset called latest.json, and the endpoint in tauri.conf.json points at
+# /releases/latest/download/latest.json - which GitHub always resolves to
+# the newest release, so the endpoint itself never changes.
+#
+# Written here rather than by hand because it repeats the version three
+# times and carries a signature nobody can eyeball.
+Write-Host "==> writing the update manifest" -ForegroundColor Cyan
+$sigPath = "$installer.sig"
+if (-not (Test-Path $sigPath)) {
+    throw "no signature at $sigPath - is createUpdaterArtifacts still true in tauri.conf.json?"
+}
+$manifest = Join-Path (Split-Path $installer -Parent) "latest.json"
+@{
+    version   = $version
+    pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    platforms = @{
+        "windows-x86_64" = @{
+            signature = (Get-Content $sigPath -Raw).Trim()
+            url       = "https://github.com/RomansJefremovs/throughline/releases/download/v$version/$(Split-Path $installer -Leaf)"
+        }
+    }
+} | ConvertTo-Json -Depth 5 | Set-Content $manifest -Encoding utf8
+
 Write-Host "==> $installer" -ForegroundColor Green
-Get-Item $installer | Select-Object Name, Length, LastWriteTime
+Get-Item $installer, $sigPath, $manifest | Select-Object Name, Length
+
+Write-Host @"
+
+Publish BOTH the installer and latest.json, or clients will not see it:
+  gh release create v$version "$installer" "$manifest" --title ... --notes-file ...
+"@ -ForegroundColor DarkGray

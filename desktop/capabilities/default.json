@@ -1,10 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window may ask the operating system for a folder. The remote URL below is a wildcard because the sidecar's port is chosen at runtime; see the comment beside WebviewUrl::External in main.rs for what that widens and why it is still safe.",
-  "windows": ["main"],
+  "description": "The main window may ask the operating system for a folder, and may check for, install and restart into an update. The remote URL below is a wildcard because the sidecar's port is chosen at runtime; see the comment beside WebviewUrl::External in main.rs for what that widens and why it is still safe.",
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["http://127.0.0.1:*"]
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
   },
-  "permissions": ["dialog:allow-open"]
+  "permissions": [
+    "dialog:allow-open",
+    "updater:default",
+    "process:allow-restart"
+  ]
 }
